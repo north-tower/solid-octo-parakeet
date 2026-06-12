@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MiningSessionStatus {
+  ACTIVE
+  COMPLETED
+  ABORTED
+}
+
+enum CoinTransactionType {
+  MINING_REWARD
+  REWARD_REDEMPTION
+  REFERRAL_EARNING
+  ADJUSTMENT
+}
+
+enum XpEventReason {
+  MINING_HOUR_BONUS
+  LEVEL_UP
+  ADJUSTMENT
+}
+
+enum RewardRequestStatus {
+  PENDING
+  FULFILLED
+  REJECTED
+}
+
+enum PayoutType {
+  REFERRAL
+  ADJUSTMENT
+}
+
+enum PayoutStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  passwordHash       String   @map("password_hash")
+  displayName        String?  @map("display_name")
+  referralCode       String   @unique @map("referral_code")
+  referredByUserId   String?  @map("referred_by_user_id")
+  xp                 Int      @default(0)
+  level              Int      @default(1)
+  coinBalance        Decimal  @default(0) @map("coin_balance") @db.Decimal(18, 8)
+  miningPowerPercent Int      @default(50) @map("mining_power_percent")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  referredBy   User?  @relation("UserReferrals", fields: [referredByUserId], references: [id])
+  referrals    User[] @relation("UserReferrals")
+
+  refreshTokens                RefreshToken[]
+  miningSessions               MiningSession[]
+  xpEvents                     XpEvent[]
+  coinTransactions             CoinTransaction[]
+  referralEarningsAsReferrer   ReferralEarning[] @relation("ReferrerEarnings")
+  referralEarningsAsReferred   ReferralEarning[] @relation("ReferredEarnings")
+  rewardRequests               RewardRequest[]
+  payouts                      Payout[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model LevelConfig {
+  level           Int     @id
+  xpRequired      Int     @map("xp_required")
+  referralPercent Decimal @map("referral_percent") @db.Decimal(5, 2)
+
+  @@map("level_config")
+}
+
+model MiningSession {
+  id                     String              @id @default(uuid())
+  userId                 String              @map("user_id")
+  startedAt              DateTime            @default(now()) @map("started_at")
+  endedAt                DateTime?           @map("ended_at")
+  avgPowerPercent        Decimal             @default(0) @map("avg_power_percent") @db.Decimal(5, 2)
+  peakPowerPercent       Decimal             @default(0) @map("peak_power_percent") @db.Decimal(5, 2)
+  totalSeconds           Int                 @default(0) @map("total_seconds")
+  secondsAbove80Percent  Int                 @default(0) @map("seconds_above_80_percent")
+  hashrate               Decimal?            @db.Decimal(18, 8)
+  sharesAccepted         Int?                @map("shares_accepted")
+  rawMinedValue          Decimal             @default(0) @map("raw_mined_value") @db.Decimal(18, 8)
+  platformCommission     Decimal             @default(0) @map("platform_commission") @db.Decimal(18, 8)
+  userRewardValue        Decimal             @default(0) @map("user_reward_value") @db.Decimal(18, 8)
+  status                 MiningSessionStatus @default(ACTIVE)
+  createdAt              DateTime            @default(now()) @map("created_at")
+  updatedAt              DateTime            @updatedAt @map("updated_at")
+
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  powerSamples      MiningPowerSample[]
+  xpEvents          XpEvent[]
+  referralEarnings  ReferralEarning[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("mining_sessions")
+}
+
+model MiningPowerSample {
+  id           String   @id @default(uuid())
+  sessionId    String   @map("session_id")
+  recordedAt   DateTime @default(now()) @map("recorded_at")
+  powerPercent Decimal  @map("power_percent") @db.Decimal(5, 2)
+
+  session MiningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("mining_power_samples")
+}
+
+model XpEvent {
+  id               String        @id @default(uuid())
+  userId           String        @map("user_id")
+  amount           Int
+  reason           XpEventReason
+  miningSessionId  String?       @map("mining_session_id")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session MiningSession? @relation(fields: [miningSessionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("xp_events")
+}
+
+model CoinTransaction {
+  id            String              @id @default(uuid())
+  userId        String              @map("user_id")
+  amount        Decimal             @db.Decimal(18, 8)
+  type          CoinTransactionType
+  referenceType String?             @map("reference_type")
+  referenceId   String?             @map("reference_id")
+  balanceAfter  Decimal             @map("balance_after") @db.Decimal(18, 8)
+  createdAt     DateTime            @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("coin_transactions")
+}
+
+model ReferralEarning {
+  id              String   @id @default(uuid())
+  referrerUserId  String   @map("referrer_user_id")
+  referredUserId  String   @map("referred_user_id")
+  miningSessionId String   @map("mining_session_id")
+  commissionBase  Decimal  @map("commission_base") @db.Decimal(18, 8)
+  referrerRate    Decimal  @map("referrer_rate") @db.Decimal(5, 2)
+  amountEarned    Decimal  @map("amount_earned") @db.Decimal(18, 8)
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  referrer User          @relation("ReferrerEarnings", fields: [referrerUserId], references: [id], onDelete: Cascade)
+  referred User          @relation("ReferredEarnings", fields: [referredUserId], references: [id], onDelete: Cascade)
+  session  MiningSession @relation(fields: [miningSessionId], references: [id], onDelete: Cascade)
+
+  @@index([referrerUserId])
+  @@index([referredUserId])
+  @@map("referral_earnings")
+}
+
+model RewardCatalog {
+  id        String   @id @default(uuid())
+  gameSlug  String   @map("game_slug")
+  name      String
+  coinCost  Decimal  @map("coin_cost") @db.Decimal(18, 8)
+  isActive  Boolean  @default(true) @map("is_active")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  rewardRequests RewardRequest[]
+
+  @@index([gameSlug])
+  @@map("reward_catalog")
+}
+
+model RewardRequest {
+  id               String              @id @default(uuid())
+  userId           String              @map("user_id")
+  catalogItemId    String              @map("catalog_item_id")
+  coinCost         Decimal             @map("coin_cost") @db.Decimal(18, 8)
+  status           RewardRequestStatus @default(PENDING)
+  fulfillmentNotes String?             @map("fulfillment_notes")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  fulfilledAt      DateTime?           @map("fulfilled_at")
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  catalogItem RewardCatalog @relation(fields: [catalogItemId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("reward_requests")
+}
+
+model Payout {
+  id        String       @id @default(uuid())
+  userId    String       @map("user_id")
+  amount    Decimal      @db.Decimal(18, 8)
+  type      PayoutType
+  status    PayoutStatus @default(PENDING)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("payouts")
+}

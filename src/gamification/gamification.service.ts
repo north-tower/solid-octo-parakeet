@@ -1,0 +1,331 @@
+import {
+  CoinTransactionType,
+  MiningSessionStatus,
+  Prisma,
+  XpEventReason,
+} from '@prisma/client';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  LevelConfigSnapshot,
+  LevelService,
+} from '../common/services/level.service';
+import { PrismaService } from '../database/prisma.service';
+import { CompleteMiningSessionDto } from './dto/complete-mining-session.dto';
+import { StartMiningSessionDto } from './dto/start-mining-session.dto';
+import { UpdateMiningPowerDto } from './dto/update-mining-power.dto';
+import {
+  calculateCommissionBreakdown,
+  calculateMiningXp,
+  resolveLevelForXp,
+} from './gamification.utils';
+
+@Injectable()
+export class GamificationService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly levelService: LevelService,
+  ) {}
+
+  async getDashboard(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        _count: { select: { referrals: true } },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const [
+      configs,
+      recentXpEvents,
+      recentCoinTransactions,
+      miningSummary,
+      completedSessions,
+      activeSession,
+    ] = await Promise.all([
+        this.levelService.getAllLevelConfigs(),
+        this.prisma.xpEvent.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.coinTransaction.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+        }),
+        this.prisma.miningSession.aggregate({
+          where: { userId, status: MiningSessionStatus.COMPLETED },
+          _sum: {
+            totalSeconds: true,
+            secondsAbove80Percent: true,
+            rawMinedValue: true,
+            userRewardValue: true,
+          },
+        }),
+        this.prisma.miningSession.count({
+          where: { userId, status: MiningSessionStatus.COMPLETED },
+        }),
+        this.prisma.miningSession.findFirst({
+          where: { userId, status: MiningSessionStatus.ACTIVE },
+          orderBy: { startedAt: 'desc' },
+        }),
+      ]);
+
+    const currentLevelConfig = this.getCurrentLevelConfig(configs, user.level);
+    const nextLevelConfig = configs.find((config) => config.level === user.level + 1);
+    const referralPercent =
+      configs.find((config) => config.level === user.level)?.referralPercent ??
+      configs.at(-1)?.referralPercent ??
+      10;
+
+    return {
+      profile: {
+        id: user.id,
+        email: user.email,
+        displayName: user.displayName,
+        referralCode: user.referralCode,
+        miningPowerPercent: user.miningPowerPercent,
+        referralsCount: user._count.referrals,
+        createdAt: user.createdAt,
+      },
+      progression: {
+        xp: user.xp,
+        level: user.level,
+        referralPercent,
+        currentLevelXpFloor: currentLevelConfig?.xpRequired ?? 0,
+        nextLevelXpTarget: nextLevelConfig?.xpRequired ?? null,
+        xpToNextLevel: nextLevelConfig
+          ? Math.max(0, nextLevelConfig.xpRequired - user.xp)
+          : null,
+      },
+      wallet: {
+        coinBalance: user.coinBalance.toString(),
+      },
+      mining: {
+        completedSessions,
+        totalSecondsMined: miningSummary._sum.totalSeconds ?? 0,
+        totalBonusEligibleSeconds:
+          miningSummary._sum.secondsAbove80Percent ?? 0,
+        totalRawMinedValue:
+          miningSummary._sum.rawMinedValue?.toString() ?? '0',
+        totalRewardValue:
+          miningSummary._sum.userRewardValue?.toString() ?? '0',
+      },
+      activeSession: activeSession
+        ? {
+            id: activeSession.id,
+            startedAt: activeSession.startedAt,
+            status: activeSession.status,
+          }
+        : null,
+      recentXpEvents: recentXpEvents.map((event) => ({
+        id: event.id,
+        amount: event.amount,
+        reason: event.reason,
+        miningSessionId: event.miningSessionId,
+        createdAt: event.createdAt,
+      })),
+      recentCoinTransactions: recentCoinTransactions.map((transaction) => ({
+        id: transaction.id,
+        amount: transaction.amount.toString(),
+        type: transaction.type,
+        referenceType: transaction.referenceType,
+        referenceId: transaction.referenceId,
+        balanceAfter: transaction.balanceAfter.toString(),
+        createdAt: transaction.createdAt,
+      })),
+    };
+  }
+
+  async updateMiningPower(userId: string, dto: UpdateMiningPowerDto) {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { miningPowerPercent: dto.miningPowerPercent },
+    });
+
+    return {
+      miningPowerPercent: user.miningPowerPercent,
+    };
+  }
+
+  async startMiningSession(userId: string, dto: StartMiningSessionDto) {
+    return this.prisma.$transaction(async (tx) => {
+      const [user, activeSession] = await Promise.all([
+        tx.user.findUnique({ where: { id: userId } }),
+        tx.miningSession.findFirst({
+          where: { userId, status: MiningSessionStatus.ACTIVE },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (activeSession) {
+        throw new ConflictException('User already has an active mining session');
+      }
+
+      if (dto.miningPowerPercent !== undefined) {
+        await tx.user.update({
+          where: { id: userId },
+          data: { miningPowerPercent: dto.miningPowerPercent },
+        });
+      }
+
+      const session = await tx.miningSession.create({
+        data: {
+          userId,
+          status: MiningSessionStatus.ACTIVE,
+        },
+      });
+
+      return {
+        id: session.id,
+        status: session.status,
+        startedAt: session.startedAt,
+        miningPowerPercent:
+          dto.miningPowerPercent ?? user.miningPowerPercent,
+      };
+    });
+  }
+
+  async completeMiningSession(
+    userId: string,
+    sessionId: string,
+    dto: CompleteMiningSessionDto,
+  ) {
+    const levelConfigs = await this.levelService.getAllLevelConfigs();
+
+    return this.prisma.$transaction(async (tx) => {
+      const [user, session] = await Promise.all([
+        tx.user.findUnique({ where: { id: userId } }),
+        tx.miningSession.findUnique({ where: { id: sessionId } }),
+      ]);
+
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      if (!session || session.userId !== userId) {
+        throw new NotFoundException('Mining session not found');
+      }
+
+      if (session.status !== MiningSessionStatus.ACTIVE) {
+        throw new ConflictException('Mining session has already been completed');
+      }
+
+      const xpEarned = calculateMiningXp(dto.secondsAbove80Percent);
+      const totalXp = user.xp + xpEarned;
+      const newLevel = resolveLevelForXp(totalXp, levelConfigs);
+      const coinAmount = new Prisma.Decimal(dto.coinAmount);
+      const balanceAfter = user.coinBalance.add(coinAmount);
+      const breakdown = calculateCommissionBreakdown(dto.rawMinedValue ?? '0');
+      const endedAt = new Date();
+
+      const updatedSession = await tx.miningSession.update({
+        where: { id: session.id },
+        data: {
+          endedAt,
+          totalSeconds: dto.totalSeconds,
+          secondsAbove80Percent: dto.secondsAbove80Percent,
+          avgPowerPercent: dto.avgPowerPercent ?? 0,
+          peakPowerPercent: dto.peakPowerPercent ?? 0,
+          hashrate: dto.hashrate,
+          sharesAccepted: dto.sharesAccepted,
+          rawMinedValue: breakdown.rawMinedValue,
+          platformCommission: breakdown.platformCommission,
+          userRewardValue: breakdown.userRewardValue,
+          status: MiningSessionStatus.COMPLETED,
+        },
+      });
+
+      const updatedUser = await tx.user.update({
+        where: { id: user.id },
+        data: {
+          xp: totalXp,
+          level: newLevel,
+          coinBalance: balanceAfter,
+        },
+      });
+
+      if (coinAmount.gt(0)) {
+        await tx.coinTransaction.create({
+          data: {
+            userId,
+            amount: coinAmount,
+            type: CoinTransactionType.MINING_REWARD,
+            referenceType: 'mining_session',
+            referenceId: session.id,
+            balanceAfter,
+          },
+        });
+      }
+
+      if (xpEarned > 0) {
+        await tx.xpEvent.create({
+          data: {
+            userId,
+            amount: xpEarned,
+            reason: XpEventReason.MINING_HOUR_BONUS,
+            miningSessionId: session.id,
+          },
+        });
+      }
+
+      const nextLevelConfig = levelConfigs.find(
+        (config) => config.level === newLevel + 1,
+      );
+
+      return {
+        session: {
+          id: updatedSession.id,
+          status: updatedSession.status,
+          startedAt: updatedSession.startedAt,
+          endedAt: updatedSession.endedAt,
+          totalSeconds: updatedSession.totalSeconds,
+          secondsAbove80Percent: updatedSession.secondsAbove80Percent,
+          avgPowerPercent: updatedSession.avgPowerPercent.toString(),
+          peakPowerPercent: updatedSession.peakPowerPercent.toString(),
+          rawMinedValue: updatedSession.rawMinedValue.toString(),
+          platformCommission: updatedSession.platformCommission.toString(),
+          userRewardValue: updatedSession.userRewardValue.toString(),
+        },
+        rewards: {
+          coinAmount: coinAmount.toString(),
+          balanceAfter: updatedUser.coinBalance.toString(),
+        },
+        progression: {
+          xpEarned,
+          totalXp: updatedUser.xp,
+          previousLevel: user.level,
+          currentLevel: updatedUser.level,
+          leveledUp: updatedUser.level > user.level,
+          xpToNextLevel: nextLevelConfig
+            ? Math.max(0, nextLevelConfig.xpRequired - updatedUser.xp)
+            : null,
+        },
+      };
+    });
+  }
+
+  private getCurrentLevelConfig(
+    configs: LevelConfigSnapshot[],
+    currentLevel: number,
+  ) {
+    return (
+      configs.find((config) => config.level === currentLevel) ??
+      configs
+        .filter((config) => config.level <= currentLevel)
+        .at(-1)
+    );
+  }
+}
