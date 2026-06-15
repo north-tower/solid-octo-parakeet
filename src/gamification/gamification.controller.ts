@@ -8,10 +8,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import {
-  CurrentUser,
-  JwtPayload,
-} from '../common/decorators/current-user.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { CompleteMiningSessionDto } from './dto/complete-mining-session.dto';
 import { StartMiningSessionDto } from './dto/start-mining-session.dto';
 import { UpdateMiningPowerDto } from './dto/update-mining-power.dto';
