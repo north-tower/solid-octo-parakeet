@@ -510,6 +510,39 @@ npm run test:cov
 npm run lint
 ```
 
+## Docker
+
+Start the API and PostgreSQL together:
+
+```bash
+docker compose up --build
+```
+
+The API is exposed on `http://localhost:3000` and PostgreSQL on `localhost:5432`.
+
+You can override the default container environment by setting these variables before running Docker Compose:
+
+```bash
+POSTGRES_DB=miner_rewards
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_PORT=5432
+PORT=3000
+JWT_SECRET=change-me-in-production
+JWT_EXPIRES_IN=7d
+```
+
+Useful Docker commands:
+
+```bash
+docker compose up --build -d
+docker compose logs -f app
+docker compose down
+docker compose down -v
+```
+
+This Docker setup uses `prisma db push` during container startup because the repository does not currently include committed Prisma migration files. Once migrations are added to the repo, you can switch the container startup command to `prisma migrate deploy`.
+
 ## Stack
 
 - NestJS
