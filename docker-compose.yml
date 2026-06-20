@@ -10,6 +10,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-miner_rewards}?schema=public
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      FULFILLMENT_API_KEY: ${FULFILLMENT_API_KEY:-change-me-for-fulfillment}
       PORT: ${PORT:-3000}
     ports:
       - "${PORT:-3000}:3000"

@@ -14,7 +14,7 @@ Project status as of now:
 - Phase 1 is done: database foundation and authentication are implemented.
 - Phase 2 is done: core gamification logic is implemented in the backend.
 - Phase 3 is done: referral earnings logic and referral dashboard endpoints are implemented.
-- Phase 4 is not implemented yet: rewards redemption flow still needs to be completed.
+- Phase 4 is done: rewards catalog, redemption requests, and manual fulfillment are implemented.
 - Phase 5 is not implemented yet: desktop mining integration is still pending.
 
 ## Feature Checklist
@@ -38,9 +38,9 @@ Project status as of now:
 | Referrals | Referral code at signup | Done | Referrer relationship can already be stored |
 | Referrals | Referral earnings calculation | Done | Credited from platform commission on session completion |
 | Referrals | Referral dashboard data | Done | Available via `GET /referrals/me` |
-| Rewards | Reward listing by game | Pending | Phase 4 |
-| Rewards | Reward redemption flow | Pending | Phase 4 |
-| Rewards | Manual fulfillment workflow | Pending | Phase 4 MVP |
+| Rewards | Reward listing by game | Done | Available via `GET /rewards/games` and `GET /rewards/games/:gameSlug` |
+| Rewards | Reward redemption flow | Done | Users create pending requests via `POST /rewards/requests` |
+| Rewards | Manual fulfillment workflow | Done | Protected by `FULFILLMENT_API_KEY` under `/rewards/fulfillment` |
 | Desktop Mining | Electron shell | Pending | Phase 5 |
 | Desktop Mining | XMRig process control | Pending | Phase 5 |
 | Desktop Mining | Real mining telemetry -> backend | Pending | Phase 5 |
@@ -52,8 +52,8 @@ Project status as of now:
 | 1 | Database + Auth | Done | Build the foundation everything depends on | Prisma schema, JWT auth, seeded config, profile flow |
 | 2 | Gamification Engine | Done | Lock in the core business math and progression loop | XP, levels, coins, dashboard, session settlement |
 | 3 | Referral System | Done | Pay referrers from platform commission using level-based percentages | Referral earnings logic, referral stats endpoints |
-| 4 | Rewards Store | Next | Let users exchange coins for gamer rewards | Reward browsing, redemption requests, fulfillment workflow |
-| 5 | Mining Integration | Planned | Connect the real desktop miner to the backend | Electron app, XMRig control, session reporting |
+| 4 | Rewards Store | Done | Let users exchange coins for gamer rewards | Reward browsing, redemption requests, fulfillment workflow |
+| 5 | Mining Integration | Next | Connect the real desktop miner to the backend | Electron app, XMRig control, session reporting |
 
 ## Small Architecture
 
@@ -64,6 +64,7 @@ Current backend structure in simple terms:
 - `Users module` exposes profile data for the logged-in user.
 - `Gamification module` contains the current Phase 2 business logic for mining session settlement, XP, levels, coins, and dashboard aggregation.
 - `Referrals module` contains Phase 3 referral earnings settlement and referral dashboard aggregation.
+- `Rewards module` contains Phase 4 reward catalog browsing, redemption requests, and manual fulfillment.
 - `Seed data` initializes level thresholds, referral percentages, and a starter reward catalog.
 
 Current request flow:
@@ -77,8 +78,7 @@ Planned high-level architecture after later phases:
 1. `Desktop app` will run Electron and manage the local miner process;
 2. `Miner integration` will collect hashrate, duration, and CPU usage data;
 3. `Backend API` will receive session updates and settle progression/rewards;
-4. `Rewards subsystem` will process redemption requests and fulfillment;
-5. `Referral subsystem` will calculate commission sharing from platform fees.
+4. `Referral subsystem` will calculate commission sharing from platform fees.
 
 ## ERD-Style Schema Summary
 
@@ -215,6 +215,21 @@ Current gamification rules implemented:
 ### Referrals
 
 - `GET /referrals/me`
+
+### Rewards
+
+- `GET /rewards/games`
+- `GET /rewards/games/:gameSlug`
+- `POST /rewards/requests`
+- `GET /rewards/requests/me`
+
+### Rewards Fulfillment
+
+Requires `x-api-key` header matching `FULFILLMENT_API_KEY`.
+
+- `GET /rewards/fulfillment/requests`
+- `PATCH /rewards/fulfillment/requests/:requestId/fulfill`
+- `PATCH /rewards/fulfillment/requests/:requestId/reject`
 
 ## Phase 2 API Examples
 
@@ -447,6 +462,117 @@ When a referred user completes a mining session, `POST /gamification/mining-sess
 
 Referral earnings are calculated from the platform commission using the referrer's current level-based percentage. The invited user's reward is not reduced.
 
+## Phase 4 API Examples
+
+### `GET /rewards/games`
+
+Example response:
+
+```json
+{
+  "games": [
+    { "gameSlug": "fifa", "itemCount": 1 },
+    { "gameSlug": "fortnite", "itemCount": 1 },
+    { "gameSlug": "steam", "itemCount": 1 }
+  ]
+}
+```
+
+### `GET /rewards/games/steam`
+
+Example response:
+
+```json
+{
+  "gameSlug": "steam",
+  "items": [
+    {
+      "id": "a0d79db2-92dd-42af-aeb6-320ce4d9c3d4",
+      "gameSlug": "steam",
+      "name": "Steam Gift Card — $10",
+      "coinCost": "1000.00000000",
+      "metadata": null
+    }
+  ]
+}
+```
+
+### `POST /rewards/requests`
+
+Requires a bearer token.
+
+Example request:
+
+```json
+{
+  "catalogItemId": "a0d79db2-92dd-42af-aeb6-320ce4d9c3d4"
+}
+```
+
+Example response:
+
+```json
+{
+  "request": {
+    "id": "94ffb0cb-22d8-4ca2-92a5-77c93b43d01f",
+    "status": "PENDING",
+    "coinCost": "1000.00000000",
+    "fulfillmentNotes": null,
+    "createdAt": "2026-06-12T12:00:00.000Z",
+    "fulfilledAt": null,
+    "catalogItem": {
+      "id": "a0d79db2-92dd-42af-aeb6-320ce4d9c3d4",
+      "gameSlug": "steam",
+      "name": "Steam Gift Card — $10",
+      "coinCost": "1000.00000000",
+      "metadata": null
+    }
+  },
+  "wallet": {
+    "coinBalance": "1500.00000000"
+  }
+}
+```
+
+Coins are validated at request time but only deducted when the request is fulfilled.
+
+### `PATCH /rewards/fulfillment/requests/:requestId/fulfill`
+
+Requires `x-api-key: <FULFILLMENT_API_KEY>`.
+
+Example request:
+
+```json
+{
+  "fulfillmentNotes": "Steam code sent via email."
+}
+```
+
+Example response:
+
+```json
+{
+  "request": {
+    "id": "94ffb0cb-22d8-4ca2-92a5-77c93b43d01f",
+    "status": "FULFILLED",
+    "coinCost": "1000.00000000",
+    "fulfillmentNotes": "Steam code sent via email.",
+    "createdAt": "2026-06-12T12:00:00.000Z",
+    "fulfilledAt": "2026-06-12T13:00:00.000Z",
+    "catalogItem": {
+      "id": "a0d79db2-92dd-42af-aeb6-320ce4d9c3d4",
+      "gameSlug": "steam",
+      "name": "Steam Gift Card — $10",
+      "coinCost": "1000.00000000",
+      "metadata": null
+    }
+  },
+  "wallet": {
+    "coinBalance": "500.00000000"
+  }
+}
+```
+
 ## What Phase 2 Returns
 
 The backend now supports a frontend dashboard with:
@@ -503,17 +629,28 @@ Main Phase 3 backend work:
 Test files added:
 - `src/referrals/referrals.service.spec.ts`
 
-## What Is Remaining
-
 ### Phase 4: Rewards Store
 
-Still to build:
-- rewards listing endpoints by game
-- reward redemption flow
-- coin deduction for approved redemptions
-- reward request lifecycle management
-- manual fulfillment workflow for MVP
-- optional later integration with gift card providers
+Implemented:
+- reward catalog listing by game
+- authenticated redemption request creation with balance validation
+- user redemption history endpoint
+- manual fulfillment workflow for pending requests
+- coin deduction and `REWARD_REDEMPTION` transactions on fulfillment
+- rejection flow that leaves user balances unchanged
+
+Main Phase 4 backend work:
+- `src/rewards/rewards.module.ts`
+- `src/rewards/rewards.controller.ts`
+- `src/rewards/rewards-fulfillment.controller.ts`
+- `src/rewards/rewards.service.ts`
+- `src/common/guards/fulfillment-api-key.guard.ts`
+- `src/app.module.ts`
+
+Test files added:
+- `src/rewards/rewards.service.spec.ts`
+
+## What Is Remaining
 
 ### Phase 5: Mining Integration
 
@@ -529,15 +666,15 @@ Still to build:
 ## Suggested Next Backend Step
 
 Recommended next phase:
-1. build Phase 4 reward listing endpoints by game;
-2. implement reward redemption requests with coin deduction;
-3. add a manual fulfillment workflow for MVP reward requests.
+1. build the Electron desktop shell;
+2. integrate local XMRig process control;
+3. report real mining telemetry to the existing session endpoints.
 
 ## Notes About The Current State
 
 - This repository currently contains the backend only.
 - Mining itself is not connected yet; Phase 2 supports fake or simulated mining session settlement.
-- The current system is ready for frontend work against auth, profile, gamification, and referral endpoints.
+- The current system is ready for frontend work against auth, profile, gamification, referral, and rewards endpoints.
 - The schema was designed ahead of time so the remaining phases can build on the same data model.
 
 ## Known Gaps And Assumptions
@@ -570,7 +707,7 @@ Recommended next phase:
 
 - `MiningPowerSample` exists in the schema but is not populated yet.
 - `RefreshToken` exists in the schema but refresh-token issuance and rotation are not currently exposed in the API.
-- Rewards and payouts have schema support but not full end-to-end workflows yet.
+- Rewards redemption and manual fulfillment are implemented end-to-end for MVP.
 - Referral earnings are implemented end-to-end for mining session settlement and dashboard reporting.
 - Desktop miner communication, telemetry validation, and secure reporting are still future work.
 
@@ -614,6 +751,7 @@ POSTGRES_PORT=5432
 PORT=3000
 JWT_SECRET=change-me-in-production
 JWT_EXPIRES_IN=7d
+FULFILLMENT_API_KEY=change-me-for-fulfillment
 ```
 
 Useful Docker commands:
