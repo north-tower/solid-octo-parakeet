@@ -1,5 +1,5 @@
 import { ConflictException } from '@nestjs/common';
-import { MiningSessionStatus, Prisma } from '@prisma/client';
+import { CoinTransactionType, MiningSessionStatus, Prisma } from '@prisma/client';
 import { LevelService } from '../common/services/level.service';
 import { PrismaService } from '../database/prisma.service';
 import { GamificationService } from './gamification.service';
@@ -28,6 +28,9 @@ describe('GamificationService', () => {
       xpEvent: {
         create: jest.fn(),
       },
+      referralEarning: {
+        create: jest.fn(),
+      },
     };
 
     const prisma = {
@@ -52,6 +55,7 @@ describe('GamificationService', () => {
       xp: 496,
       level: 1,
       coinBalance: new Prisma.Decimal('100'),
+      referredByUserId: null,
     };
     const session = {
       id: 'session-1',
@@ -94,6 +98,7 @@ describe('GamificationService', () => {
     expect(result.rewards.balanceAfter).toBe('125');
     expect(result.session.platformCommission).toBe('2');
     expect(result.session.userRewardValue).toBe('8');
+    expect(result.referral).toBeNull();
     expect(tx.coinTransaction.create).toHaveBeenCalledTimes(1);
     expect(tx.xpEvent.create).toHaveBeenCalledTimes(1);
   });
@@ -105,6 +110,7 @@ describe('GamificationService', () => {
       xp: 120,
       level: 1,
       coinBalance: new Prisma.Decimal('5'),
+      referredByUserId: null,
     };
     const session = {
       id: 'session-2',
@@ -167,5 +173,76 @@ describe('GamificationService', () => {
         coinAmount: '1',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('credits referral earnings to the referrer from platform commission', async () => {
+    const { service, tx } = createService();
+    const user = {
+      id: 'user-4',
+      xp: 0,
+      level: 1,
+      coinBalance: new Prisma.Decimal('0'),
+      referredByUserId: 'referrer-1',
+    };
+    const referrer = {
+      id: 'referrer-1',
+      xp: 600,
+      level: 2,
+      coinBalance: new Prisma.Decimal('10'),
+    };
+    const session = {
+      id: 'session-4',
+      userId: 'user-4',
+      status: MiningSessionStatus.ACTIVE,
+      startedAt: new Date('2026-01-01T00:00:00.000Z'),
+    };
+
+    tx.user.findUnique
+      .mockResolvedValueOnce(user)
+      .mockResolvedValueOnce(referrer);
+    tx.miningSession.findUnique.mockResolvedValue(session);
+    tx.miningSession.update.mockImplementation(async ({ data }) => ({
+      ...session,
+      ...data,
+      avgPowerPercent: new Prisma.Decimal(data.avgPowerPercent),
+      peakPowerPercent: new Prisma.Decimal(data.peakPowerPercent),
+      rawMinedValue: new Prisma.Decimal(data.rawMinedValue),
+      platformCommission: new Prisma.Decimal(data.platformCommission),
+      userRewardValue: new Prisma.Decimal(data.userRewardValue),
+    }));
+    tx.user.update
+      .mockImplementationOnce(async ({ data }) => ({ ...user, ...data }))
+      .mockImplementationOnce(async ({ data }) => ({ ...referrer, ...data }));
+
+    const result = await service.completeMiningSession('user-4', 'session-4', {
+      totalSeconds: 3600,
+      secondsAbove80Percent: 3600,
+      coinAmount: '25',
+      rawMinedValue: '10',
+      avgPowerPercent: 82,
+      peakPowerPercent: 90,
+    });
+
+    expect(result.referral).toEqual({
+      referrerUserId: 'referrer-1',
+      amountEarned: '0.75',
+      referrerRate: '12',
+    });
+    expect(tx.referralEarning.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        referrerUserId: 'referrer-1',
+        referredUserId: 'user-4',
+        miningSessionId: 'session-4',
+        amountEarned: new Prisma.Decimal('0.75'),
+      }),
+    });
+    expect(tx.coinTransaction.create).toHaveBeenCalledTimes(2);
+    expect(tx.coinTransaction.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'referrer-1',
+        type: CoinTransactionType.REFERRAL_EARNING,
+        amount: new Prisma.Decimal('0.75'),
+      }),
+    });
   });
 });

@@ -13,7 +13,7 @@ The idea is simple:
 Project status as of now:
 - Phase 1 is done: database foundation and authentication are implemented.
 - Phase 2 is done: core gamification logic is implemented in the backend.
-- Phase 3 is not implemented yet: referral earnings logic still needs to be built.
+- Phase 3 is done: referral earnings logic and referral dashboard endpoints are implemented.
 - Phase 4 is not implemented yet: rewards redemption flow still needs to be completed.
 - Phase 5 is not implemented yet: desktop mining integration is still pending.
 
@@ -36,8 +36,8 @@ Project status as of now:
 | Gamification | XP event history | Done | Stored in `xp_events` |
 | Gamification | Dashboard endpoint | Done | Returns progression, wallet, activity, and mining summary |
 | Referrals | Referral code at signup | Done | Referrer relationship can already be stored |
-| Referrals | Referral earnings calculation | Pending | Phase 3 |
-| Referrals | Referral dashboard data | Pending | Phase 3 |
+| Referrals | Referral earnings calculation | Done | Credited from platform commission on session completion |
+| Referrals | Referral dashboard data | Done | Available via `GET /referrals/me` |
 | Rewards | Reward listing by game | Pending | Phase 4 |
 | Rewards | Reward redemption flow | Pending | Phase 4 |
 | Rewards | Manual fulfillment workflow | Pending | Phase 4 MVP |
@@ -51,8 +51,8 @@ Project status as of now:
 | --- | --- | --- | --- | --- |
 | 1 | Database + Auth | Done | Build the foundation everything depends on | Prisma schema, JWT auth, seeded config, profile flow |
 | 2 | Gamification Engine | Done | Lock in the core business math and progression loop | XP, levels, coins, dashboard, session settlement |
-| 3 | Referral System | Next | Pay referrers from platform commission using level-based percentages | Referral earnings logic, referral stats endpoints |
-| 4 | Rewards Store | Planned | Let users exchange coins for gamer rewards | Reward browsing, redemption requests, fulfillment workflow |
+| 3 | Referral System | Done | Pay referrers from platform commission using level-based percentages | Referral earnings logic, referral stats endpoints |
+| 4 | Rewards Store | Next | Let users exchange coins for gamer rewards | Reward browsing, redemption requests, fulfillment workflow |
 | 5 | Mining Integration | Planned | Connect the real desktop miner to the backend | Electron app, XMRig control, session reporting |
 
 ## Small Architecture
@@ -63,6 +63,7 @@ Current backend structure in simple terms:
 - `Auth module` manages registration, login, JWT issuance, and referral-code-aware signup.
 - `Users module` exposes profile data for the logged-in user.
 - `Gamification module` contains the current Phase 2 business logic for mining session settlement, XP, levels, coins, and dashboard aggregation.
+- `Referrals module` contains Phase 3 referral earnings settlement and referral dashboard aggregation.
 - `Seed data` initializes level thresholds, referral percentages, and a starter reward catalog.
 
 Current request flow:
@@ -210,6 +211,10 @@ Current gamification rules implemented:
 - `PATCH /gamification/me/mining-power`
 - `POST /gamification/mining-sessions/start`
 - `POST /gamification/mining-sessions/:sessionId/complete`
+
+### Referrals
+
+- `GET /referrals/me`
 
 ## Phase 2 API Examples
 
@@ -371,6 +376,77 @@ Example response:
 - `rawMinedValue`, `platformCommission`, and `userRewardValue` represent the economic split of the mining session.
 - The XP rule only awards points for full qualified hours above `80%` power.
 
+## Phase 3 API Examples
+
+All referral endpoints below require a bearer token.
+
+### `GET /referrals/me`
+
+Example response:
+
+```json
+{
+  "profile": {
+    "referralCode": "AB12CD34",
+    "referralsCount": 2
+  },
+  "progression": {
+    "level": 2,
+    "xp": 600,
+    "referralPercent": 12,
+    "currentLevelXpFloor": 500,
+    "nextLevelXpTarget": 1050,
+    "xpToNextLevel": 450,
+    "nextLevelReferralPercent": 14
+  },
+  "earnings": {
+    "totalEarned": "3.50000000",
+    "totalSessions": 4
+  },
+  "referredUsers": [
+    {
+      "id": "a0d79db2-92dd-42af-aeb6-320ce4d9c3d4",
+      "displayName": "NightRaider",
+      "email": "player@example.com",
+      "joinedAt": "2026-06-01T10:00:00.000Z",
+      "totalEarnedFromUser": "3.50000000",
+      "sessionsCount": 4
+    }
+  ],
+  "recentEarnings": [
+    {
+      "id": "5871f9cf-5732-4f12-bd1b-3ce0ca4e8cb1",
+      "amountEarned": "0.75000000",
+      "commissionBase": "2.00000000",
+      "referrerRate": "12",
+      "referredUser": {
+        "id": "a0d79db2-92dd-42af-aeb6-320ce4d9c3d4",
+        "displayName": "NightRaider",
+        "email": "player@example.com"
+      },
+      "miningSessionId": "94ffb0cb-22d8-4ca2-92a5-77c93b43d01f",
+      "createdAt": "2026-06-12T13:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Referral Payout On Session Completion
+
+When a referred user completes a mining session, `POST /gamification/mining-sessions/:sessionId/complete` may include:
+
+```json
+{
+  "referral": {
+    "referrerUserId": "referrer-user-id",
+    "amountEarned": "0.75000000",
+    "referrerRate": "12"
+  }
+}
+```
+
+Referral earnings are calculated from the platform commission using the referrer's current level-based percentage. The invited user's reward is not reduced.
+
 ## What Phase 2 Returns
 
 The backend now supports a frontend dashboard with:
@@ -406,20 +482,28 @@ Test files added:
 - `src/gamification/gamification.utils.spec.ts`
 - `src/gamification/gamification.service.spec.ts`
 
-## What Is Remaining
-
 ### Phase 3: Referral System
 
-Still to build:
+Implemented:
 - referral earnings calculation from platform commission
-- level-based referral percentage payout logic
-- referral dashboard page data endpoints
-- per-user referral earnings breakdown
+- level-based referral percentage payout on mining session completion
+- referral dashboard endpoint with per-user earnings breakdown
 - total referral earnings tracking
-- XP-to-next-level visibility for referral page
+- XP-to-next-level and next-level referral rate visibility for the referral page
+- `ReferralEarning` records and `REFERRAL_EARNING` coin transactions for referrers
 
-Expected business rule:
-- referrers are paid from the platform commission, not from the invited user reward
+Main Phase 3 backend work:
+- `src/referrals/referrals.module.ts`
+- `src/referrals/referrals.controller.ts`
+- `src/referrals/referrals.service.ts`
+- `src/gamification/gamification.utils.ts`
+- `src/gamification/gamification.service.ts`
+- `src/app.module.ts`
+
+Test files added:
+- `src/referrals/referrals.service.spec.ts`
+
+## What Is Remaining
 
 ### Phase 4: Rewards Store
 
@@ -445,16 +529,15 @@ Still to build:
 ## Suggested Next Backend Step
 
 Recommended next phase:
-1. build Phase 3 referral calculation on top of the existing session settlement flow;
-2. hook referral earnings into `completeMiningSession`;
-3. expose referral summary endpoints for the future frontend;
-4. keep rewards fulfillment mocked/manual until the referral logic is stable.
+1. build Phase 4 reward listing endpoints by game;
+2. implement reward redemption requests with coin deduction;
+3. add a manual fulfillment workflow for MVP reward requests.
 
 ## Notes About The Current State
 
 - This repository currently contains the backend only.
 - Mining itself is not connected yet; Phase 2 supports fake or simulated mining session settlement.
-- The current system is ready for frontend work against auth, profile, and gamification endpoints.
+- The current system is ready for frontend work against auth, profile, gamification, and referral endpoints.
 - The schema was designed ahead of time so the remaining phases can build on the same data model.
 
 ## Known Gaps And Assumptions
@@ -487,7 +570,8 @@ Recommended next phase:
 
 - `MiningPowerSample` exists in the schema but is not populated yet.
 - `RefreshToken` exists in the schema but refresh-token issuance and rotation are not currently exposed in the API.
-- Rewards, referrals, and payouts have schema support but not full end-to-end workflows yet.
+- Rewards and payouts have schema support but not full end-to-end workflows yet.
+- Referral earnings are implemented end-to-end for mining session settlement and dashboard reporting.
 - Desktop miner communication, telemetry validation, and secure reporting are still future work.
 
 ## Local Development

@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './database/prisma.module';
 import { GamificationModule } from './gamification/gamification.module';
+import { ReferralsModule } from './referrals/referrals.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -13,6 +14,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     UsersModule,
     GamificationModule,
+    ReferralsModule,
   ],
   controllers: [AppController],
 })

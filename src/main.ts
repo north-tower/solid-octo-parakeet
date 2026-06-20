@@ -21,13 +21,17 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Gaming Rewards API')
     .setDescription(
-      'API for authentication, user profiles, and gamified mining sessions. Phase 1 covers Auth and Users. Phase 2 covers Gamification.',
+      'API for authentication, user profiles, gamified mining sessions, and referral earnings. Phase 1 covers Auth and Users. Phase 2 covers Gamification. Phase 3 covers Referrals.',
     )
     .setVersion('1.0')
     .addBearerAuth()
     .addTag('Phase 1 - Auth', 'Authentication and token issuance.')
     .addTag('Phase 1 - Users', 'User profile and account endpoints.')
     .addTag('Phase 2 - Gamification', 'Mining sessions, XP, and rewards flows.')
+    .addTag(
+      'Phase 3 - Referrals',
+      'Referral dashboard, earnings summary, and per-user breakdown.',
+    )
     .build();
 
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);

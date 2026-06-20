@@ -35,3 +35,39 @@ export function calculateCommissionBreakdown(rawMinedValue: Prisma.Decimal.Value
     userRewardValue,
   };
 }
+
+export interface ReferralEarningBreakdown {
+  commissionBase: Prisma.Decimal;
+  referrerRate: Prisma.Decimal;
+  amountEarned: Prisma.Decimal;
+}
+
+export function calculateReferralEarning(
+  platformCommission: Prisma.Decimal,
+  userRewardValue: Prisma.Decimal,
+  coinAmount: Prisma.Decimal,
+  referrerRatePercent: number,
+): ReferralEarningBreakdown | null {
+  if (referrerRatePercent <= 0 || platformCommission.lte(0)) {
+    return null;
+  }
+
+  const referrerRate = new Prisma.Decimal(referrerRatePercent);
+  const commissionBase = platformCommission;
+
+  const platformCommissionCoins = userRewardValue.gt(0)
+    ? coinAmount.mul(platformCommission).div(userRewardValue)
+    : new Prisma.Decimal(0);
+
+  const amountEarned = platformCommissionCoins.mul(referrerRate).div(100);
+
+  if (amountEarned.lte(0)) {
+    return null;
+  }
+
+  return {
+    commissionBase,
+    referrerRate,
+    amountEarned,
+  };
+}

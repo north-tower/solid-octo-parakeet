@@ -1,7 +1,9 @@
+import { Prisma } from '@prisma/client';
 import { LevelConfigSnapshot } from '../common/services/level.service';
 import {
   calculateCommissionBreakdown,
   calculateMiningXp,
+  calculateReferralEarning,
   resolveLevelForXp,
 } from './gamification.utils';
 
@@ -31,5 +33,32 @@ describe('gamification utils', () => {
     expect(breakdown.rawMinedValue.toString()).toBe('25');
     expect(breakdown.platformCommission.toString()).toBe('5');
     expect(breakdown.userRewardValue.toString()).toBe('20');
+  });
+
+  it('calculates referral earnings from platform commission at referrer rate', () => {
+    const breakdown = calculateCommissionBreakdown('10');
+    const earning = calculateReferralEarning(
+      breakdown.platformCommission,
+      breakdown.userRewardValue,
+      new Prisma.Decimal('25'),
+      12,
+    );
+
+    expect(earning?.commissionBase.toString()).toBe('2');
+    expect(earning?.referrerRate.toString()).toBe('12');
+    expect(earning?.amountEarned.toString()).toBe('0.75');
+  });
+
+  it('returns null referral earnings when commission or rate is zero', () => {
+    const breakdown = calculateCommissionBreakdown('0');
+
+    expect(
+      calculateReferralEarning(
+        breakdown.platformCommission,
+        breakdown.userRewardValue,
+        new Prisma.Decimal('25'),
+        12,
+      ),
+    ).toBeNull();
   });
 });

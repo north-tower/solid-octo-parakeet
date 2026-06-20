@@ -20,6 +20,7 @@ import { UpdateMiningPowerDto } from './dto/update-mining-power.dto';
 import {
   calculateCommissionBreakdown,
   calculateMiningXp,
+  calculateReferralEarning,
   resolveLevelForXp,
 } from './gamification.utils';
 
@@ -281,6 +282,70 @@ export class GamificationService {
         });
       }
 
+      let referralPayout: {
+        referrerUserId: string;
+        amountEarned: string;
+        referrerRate: string;
+      } | null = null;
+
+      if (user.referredByUserId) {
+        const referrer = await tx.user.findUnique({
+          where: { id: user.referredByUserId },
+        });
+
+        if (referrer) {
+          const referrerRatePercent = this.getReferralPercentForLevel(
+            levelConfigs,
+            referrer.level,
+          );
+          const referralEarning = calculateReferralEarning(
+            breakdown.platformCommission,
+            breakdown.userRewardValue,
+            coinAmount,
+            referrerRatePercent,
+          );
+
+          if (referralEarning) {
+            const referrerBalanceAfter = referrer.coinBalance.add(
+              referralEarning.amountEarned,
+            );
+
+            await tx.referralEarning.create({
+              data: {
+                referrerUserId: referrer.id,
+                referredUserId: user.id,
+                miningSessionId: session.id,
+                commissionBase: referralEarning.commissionBase,
+                referrerRate: referralEarning.referrerRate,
+                amountEarned: referralEarning.amountEarned,
+              },
+            });
+
+            await tx.user.update({
+              where: { id: referrer.id },
+              data: { coinBalance: referrerBalanceAfter },
+            });
+
+            await tx.coinTransaction.create({
+              data: {
+                userId: referrer.id,
+                amount: referralEarning.amountEarned,
+                type: CoinTransactionType.REFERRAL_EARNING,
+                referenceType: 'mining_session',
+                referenceId: session.id,
+                balanceAfter: referrerBalanceAfter,
+              },
+            });
+
+            referralPayout = {
+              referrerUserId: referrer.id,
+              amountEarned: referralEarning.amountEarned.toString(),
+              referrerRate: referralEarning.referrerRate.toString(),
+            };
+          }
+        }
+      }
+
       const nextLevelConfig = levelConfigs.find(
         (config) => config.level === newLevel + 1,
       );
@@ -313,6 +378,7 @@ export class GamificationService {
             ? Math.max(0, nextLevelConfig.xpRequired - updatedUser.xp)
             : null,
         },
+        referral: referralPayout,
       };
     });
   }
@@ -327,5 +393,13 @@ export class GamificationService {
         .filter((config) => config.level <= currentLevel)
         .at(-1)
     );
+  }
+
+  private getReferralPercentForLevel(
+    configs: LevelConfigSnapshot[],
+    level: number,
+  ): number {
+    const config = this.getCurrentLevelConfig(configs, level);
+    return config?.referralPercent ?? configs.at(-1)?.referralPercent ?? 10;
   }
 }
