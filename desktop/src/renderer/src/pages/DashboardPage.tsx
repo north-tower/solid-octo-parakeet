@@ -1,8 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { MinerStats } from '@shared/constants';
 import { HEARTBEAT_INTERVAL_MS } from '@shared/constants';
 import { api, type DashboardResponse } from '../api/client';
+import { AnimatedHashrate } from '../components/AnimatedHashrate';
+import { PowerSlider } from '../components/PowerSlider';
+import { ReferralModal } from '../components/ReferralModal';
+import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
+import { getInitials } from '../utils/validation';
 
 function formatDuration(totalSeconds: number) {
   const hours = Math.floor(totalSeconds / 3600);
@@ -11,15 +16,41 @@ function formatDuration(totalSeconds: number) {
   return `${hours}h ${minutes}m ${seconds}s`;
 }
 
+function formatCoins(value: string) {
+  const parsed = Number.parseFloat(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+  return parsed.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 8,
+  });
+}
+
+function levelProgress(dashboard: DashboardResponse) {
+  const { xp, currentLevelXpFloor, nextLevelXpTarget } = dashboard.progression;
+  if (!nextLevelXpTarget) {
+    return 100;
+  }
+  const span = nextLevelXpTarget - currentLevelXpFloor;
+  if (span <= 0) {
+    return 100;
+  }
+  return Math.min(100, Math.max(0, ((xp - currentLevelXpFloor) / span) * 100));
+}
+
 export function DashboardPage() {
   const { logout, userLabel } = useAuth();
+  const { showToast } = useToast();
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [power, setPower] = useState(50);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [minerStats, setMinerStats] = useState<MinerStats | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [walletFlash, setWalletFlash] = useState(false);
+  const [referralOpen, setReferralOpen] = useState(false);
+  const previousBalance = useRef<string | null>(null);
 
   const refreshDashboard = async () => {
     const data = await api.getDashboard();
@@ -28,6 +59,15 @@ export function DashboardPage() {
     if (data.activeSession) {
       setSessionId(data.activeSession.id);
     }
+
+    if (
+      previousBalance.current !== null &&
+      previousBalance.current !== data.wallet.coinBalance
+    ) {
+      setWalletFlash(true);
+      window.setTimeout(() => setWalletFlash(false), 1200);
+    }
+    previousBalance.current = data.wallet.coinBalance;
   };
 
   useEffect(() => {
@@ -60,11 +100,11 @@ export function DashboardPage() {
           sharesAccepted: minerStats.sharesAccepted,
         });
       } catch (heartbeatError) {
-        setError(
+        const message =
           heartbeatError instanceof Error
             ? heartbeatError.message
-            : 'Heartbeat failed',
-        );
+            : 'Heartbeat failed';
+        showToast(message, 'error');
       }
     };
 
@@ -74,12 +114,18 @@ export function DashboardPage() {
     }, HEARTBEAT_INTERVAL_MS);
 
     return () => window.clearInterval(timer);
-  }, [sessionId, minerStats?.running, minerStats?.powerPercent, minerStats?.hashrate, minerStats?.sharesAccepted]);
+  }, [
+    sessionId,
+    minerStats?.running,
+    minerStats?.powerPercent,
+    minerStats?.hashrate,
+    minerStats?.sharesAccepted,
+    showToast,
+  ]);
 
   const startMining = async () => {
     setBusy(true);
     setError(null);
-    setStatusMessage(null);
 
     try {
       await api.updateMiningPower(power);
@@ -87,14 +133,18 @@ export function DashboardPage() {
       setSessionId(session.id);
       const stats = await window.desktop.mining.start(power);
       setMinerStats(stats);
-      setStatusMessage(
+      showToast(
         stats.mode === 'xmrig'
-          ? 'Mining with XMRig'
-          : 'Mining in simulated mode (XMRig not found)',
+          ? 'Mining started with XMRig'
+          : 'Mining started in simulated mode',
+        'info',
       );
       await refreshDashboard();
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : 'Failed to start mining');
+      const message =
+        startError instanceof Error ? startError.message : 'Failed to start mining';
+      setError(message);
+      showToast(message, 'error');
     } finally {
       setBusy(false);
     }
@@ -123,12 +173,17 @@ export function DashboardPage() {
       });
 
       setSessionId(null);
-      setStatusMessage(
-        `Session complete. +${result.rewards.coinAmount} coins${result.progression.leveledUp ? ' and level up!' : '.'}`,
+      const levelNote = result.progression.leveledUp ? ' Level up!' : '';
+      showToast(
+        `Session complete! +${formatCoins(result.rewards.coinAmount)} coins.${levelNote}`,
+        'success',
       );
       await refreshDashboard();
     } catch (stopError) {
-      setError(stopError instanceof Error ? stopError.message : 'Failed to stop mining');
+      const message =
+        stopError instanceof Error ? stopError.message : 'Failed to stop mining';
+      setError(message);
+      showToast(message, 'error');
     } finally {
       setBusy(false);
     }
@@ -147,10 +202,13 @@ export function DashboardPage() {
       await api.abortSession(sessionId);
       setSessionId(null);
       setMinerStats(null);
-      setStatusMessage('Mining session aborted.');
+      showToast('Mining session aborted', 'info');
       await refreshDashboard();
     } catch (abortError) {
-      setError(abortError instanceof Error ? abortError.message : 'Failed to abort mining');
+      const message =
+        abortError instanceof Error ? abortError.message : 'Failed to abort mining';
+      setError(message);
+      showToast(message, 'error');
     } finally {
       setBusy(false);
     }
@@ -161,40 +219,68 @@ export function DashboardPage() {
   }
 
   const isMining = Boolean(sessionId && minerStats?.running);
+  const isFirstRun =
+    Number.parseFloat(dashboard.wallet.coinBalance) === 0 &&
+    dashboard.mining.completedSessions === 0;
+  const progress = levelProgress(dashboard);
 
   return (
     <div className="dashboard">
       <header className="topbar">
         <div>
           <p className="eyebrow">Gamer Mining Rewards</p>
-          <h1>{userLabel}</h1>
+          <h1>Dashboard</h1>
         </div>
-        <button className="ghost" type="button" onClick={logout}>
-          Sign out
-        </button>
+        <div className="topbar-user">
+          <div className="avatar" aria-hidden="true">
+            {getInitials(userLabel)}
+          </div>
+          <div className="topbar-user-meta">
+            <strong>{userLabel}</strong>
+            <span className="muted">Level {dashboard.progression.level}</span>
+          </div>
+          <button className="ghost" type="button" onClick={logout}>
+            Sign out
+          </button>
+        </div>
       </header>
 
       <section className="grid">
-        <article className="panel highlight">
+        <article className={`panel wallet-hero ${walletFlash ? 'wallet-flash' : ''}`}>
           <h2>Wallet</h2>
-          <p className="metric">{dashboard.wallet.coinBalance}</p>
-          <p className="muted">coins available</p>
+          <p className="metric">{formatCoins(dashboard.wallet.coinBalance)}</p>
+          <p className="metric-caption">coins available</p>
         </article>
 
-        <article className="panel">
+        <article className="panel stat-card">
           <h2>Level {dashboard.progression.level}</h2>
-          <p className="metric">{dashboard.progression.xp} XP</p>
-          <p className="muted">
+          <p className="metric">{dashboard.progression.xp}</p>
+          <p className="metric-caption">total XP earned</p>
+          <div className="xp-progress">
+            <div className="xp-progress-bar" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="muted xp-progress-label">
             {dashboard.progression.xpToNextLevel ?? 0} XP to next level
           </p>
         </article>
 
-        <article className="panel">
+        <button
+          type="button"
+          className="panel stat-card stat-card-button"
+          onClick={() => setReferralOpen(true)}
+        >
           <h2>Referrals</h2>
           <p className="metric">{dashboard.profile.referralsCount}</p>
-          <p className="muted">code {dashboard.profile.referralCode}</p>
-        </article>
+          <p className="metric-caption">friends invited</p>
+          <p className="muted">Tap to share code {dashboard.profile.referralCode}</p>
+        </button>
       </section>
+
+      {isFirstRun && !isMining && (
+        <div className="first-run-banner">
+          Start your first mining session to earn coins
+        </div>
+      )}
 
       <section className="panel mining-panel">
         <div className="mining-header">
@@ -206,28 +292,22 @@ export function DashboardPage() {
                 : 'Start a session to earn coins and XP'}
             </p>
           </div>
-          <span className={`badge ${isMining ? 'live' : ''}`}>
-            {isMining ? minerStats?.mode ?? 'active' : 'idle'}
+          <span className={`badge ${isMining ? 'live mining' : 'idle'}`}>
+            {isMining ? 'mining' : 'idle'}
           </span>
         </div>
 
-        <label className="slider-label">
-          CPU power: {power}%
-          <input
-            type="range"
-            min={0}
-            max={90}
-            value={power}
-            disabled={isMining || busy}
-            onChange={(event) => setPower(Number(event.target.value))}
-          />
-        </label>
+        <PowerSlider
+          value={power}
+          disabled={isMining || busy}
+          onChange={setPower}
+        />
 
         {minerStats && (
           <div className="stats-grid">
             <div>
               <span>Hashrate</span>
-              <strong>{minerStats.hashrate.toFixed(2)} H/s</strong>
+              <AnimatedHashrate value={minerStats.hashrate} active={isMining} />
             </div>
             <div>
               <span>Duration</span>
@@ -246,25 +326,47 @@ export function DashboardPage() {
 
         <div className="actions">
           {!isMining ? (
-            <button className="primary" type="button" disabled={busy} onClick={() => void startMining()}>
+            <button
+              className="primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void startMining()}
+            >
               Start mining
             </button>
           ) : (
             <>
-              <button className="primary" type="button" disabled={busy} onClick={() => void stopMining()}>
+              <button
+                className="primary"
+                type="button"
+                disabled={busy}
+                onClick={() => void stopMining()}
+              >
                 Stop and settle
               </button>
-              <button className="ghost" type="button" disabled={busy} onClick={() => void abortMining()}>
+              <button
+                className="ghost"
+                type="button"
+                disabled={busy}
+                onClick={() => void abortMining()}
+              >
                 Abort
               </button>
             </>
           )}
         </div>
 
-        {statusMessage && <p className="success">{statusMessage}</p>}
         {error && <p className="error">{error}</p>}
         {minerStats?.lastError && <p className="error">{minerStats.lastError}</p>}
       </section>
+
+      {referralOpen && (
+        <ReferralModal
+          referralCode={dashboard.profile.referralCode}
+          referralsCount={dashboard.profile.referralsCount}
+          onClose={() => setReferralOpen(false)}
+        />
+      )}
     </div>
   );
 }

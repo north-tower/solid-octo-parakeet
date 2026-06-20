@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -28,5 +28,15 @@ export class AuthController {
   @ApiBody({ type: LoginDto })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Get('referral-codes/:code/validate')
+  @ApiOperation({
+    summary: 'Validate a referral code',
+    description:
+      'Checks whether a referral code exists before registration. Does not require authentication.',
+  })
+  validateReferralCode(@Param('code') code: string) {
+    return this.authService.validateReferralCode(code);
   }
 }

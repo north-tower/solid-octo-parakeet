@@ -81,6 +81,23 @@ export class AuthService {
     return this.buildAuthResponse(user.id);
   }
 
+  async validateReferralCode(code: string) {
+    const referrer = await this.prisma.user.findUnique({
+      where: { referralCode: code.toUpperCase().trim() },
+      select: { displayName: true, email: true },
+    });
+
+    if (!referrer) {
+      return { valid: false as const };
+    }
+
+    return {
+      valid: true as const,
+      referrerDisplayName:
+        referrer.displayName ?? referrer.email.split('@')[0],
+    };
+  }
+
   private async buildAuthResponse(userId: string) {
     const profile = await this.usersService.getProfile(userId);
     const accessToken = await this.jwtService.signAsync({

@@ -90,6 +90,8 @@ export interface DashboardResponse {
     xp: number;
     level: number;
     referralPercent: number;
+    currentLevelXpFloor: number;
+    nextLevelXpTarget: number | null;
     xpToNextLevel: number | null;
   };
   wallet: {
@@ -127,6 +129,11 @@ export interface CompleteSessionResponse {
   };
 }
 
+export interface ReferralValidationResponse {
+  valid: boolean;
+  referrerDisplayName?: string;
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<AuthResponse>('/auth/login', {
@@ -144,6 +151,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  validateReferralCode: (code: string) =>
+    request<ReferralValidationResponse>(
+      `/auth/referral-codes/${encodeURIComponent(code.trim().toUpperCase())}/validate`,
+    ),
 
   getDashboard: () => request<DashboardResponse>('/gamification/me'),
 
