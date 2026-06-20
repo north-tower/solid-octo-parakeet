@@ -105,7 +105,9 @@ export class RewardsService {
     };
   }
 
-  async listFulfillmentRequests(status = RewardRequestStatus.PENDING) {
+  async listFulfillmentRequests(
+    status: RewardRequestStatus = RewardRequestStatus.PENDING,
+  ) {
     const requests = await this.prisma.rewardRequest.findMany({
       where: { status },
       include: {
