@@ -33,6 +33,8 @@ VITE_XMRIG_POOL_URL=pool.supportxmr.com:443
 VITE_XMRIG_WALLET=YOUR_MONERO_WALLET_ADDRESS
 ```
 
+For production builds (`pnpm run dist`), set `VITE_API_URL` to your public API (e.g. `http://13.140.178.232:3000`) **before** running the build command.
+
 ## Run in development
 
 Start the backend first, then:
@@ -62,7 +64,45 @@ desktop/
 
 ## Build
 
+Compile the app (output in `out/`):
+
 ```bash
 pnpm run build
 pnpm run preview
 ```
+
+### Windows installer (.exe)
+
+Set production API URL **before** building — Vite bakes `VITE_*` vars into the bundle at compile time:
+
+```bash
+# desktop/.env
+VITE_API_URL=http://YOUR_PUBLIC_API:3000
+```
+
+Build on **Windows** (required for a Windows `.exe`):
+
+```bash
+pnpm run dist
+```
+
+Output:
+
+```text
+desktop/release/Gamer Mining Rewards-Setup-0.1.0.exe
+```
+
+Unpacked build (no installer, useful for testing):
+
+```bash
+pnpm run dist:dir
+# → desktop/release/win-unpacked/Gamer Mining Rewards.exe
+```
+
+**Sharing:** upload the `.exe` to GitHub Releases, Google Drive, etc. Recipients run the installer; no Node.js required.
+
+**Notes:**
+
+- Code signing is not configured — Windows SmartScreen may warn on first run.
+- Add `build/icon.ico` for a custom app icon (see `build/README.md`).
+- The backend at `VITE_API_URL` must be reachable from the user's network.

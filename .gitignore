@@ -399,5 +399,6 @@ dist
 .webpack
 desktop/out
 desktop/dist
+desktop/release
 desktop/node_modules
 .serverless/**/*.zip
