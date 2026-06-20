@@ -814,15 +814,31 @@ npm run lint
 
 ## Docker
 
+Create a `.env` file in the project root before starting:
+
+```bash
+cp .env.example .env
+```
+
 Start the API and PostgreSQL together:
 
 ```bash
-docker compose up --build
+docker compose up --build -d
+docker compose logs -f app
 ```
 
 The API is exposed on `http://localhost:3000` and PostgreSQL on `localhost:5432`.
 
-You can override the default container environment by setting these variables before running Docker Compose:
+Important: PostgreSQL stores the password only when the data volume is first created. If you change `POSTGRES_PASSWORD` in `.env` later, reset the volume:
+
+```bash
+docker compose down -v
+docker compose up --build -d
+```
+
+If the app logs `P1000: Authentication failed`, the database volume password does not match `.env`. Run the reset commands above, or set `POSTGRES_PASSWORD` back to the value used when the volume was first created.
+
+You can override the default container environment in `.env`:
 
 ```bash
 POSTGRES_DB=miner_rewards
