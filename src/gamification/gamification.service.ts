@@ -7,6 +7,7 @@ import {
 import {
   ConflictException,
   Injectable,
+  BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -15,12 +16,17 @@ import {
 } from '../common/services/level.service';
 import { PrismaService } from '../database/prisma.service';
 import { CompleteMiningSessionDto } from './dto/complete-mining-session.dto';
+import { MiningSessionHeartbeatDto } from './dto/mining-session-heartbeat.dto';
 import { StartMiningSessionDto } from './dto/start-mining-session.dto';
 import { UpdateMiningPowerDto } from './dto/update-mining-power.dto';
 import {
+  aggregateTelemetryFromSamples,
+  calculateCoinReward,
   calculateCommissionBreakdown,
   calculateMiningXp,
   calculateReferralEarning,
+  MIN_HEARTBEATS_FOR_SETTLEMENT,
+  MIN_SECONDS_REQUIRING_HEARTBEATS,
   resolveLevelForXp,
 } from './gamification.utils';
 
@@ -199,6 +205,101 @@ export class GamificationService {
     });
   }
 
+  async recordHeartbeat(
+    userId: string,
+    sessionId: string,
+    dto: MiningSessionHeartbeatDto,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const session = await this.getActiveSessionForUser(tx, userId, sessionId);
+
+      await tx.miningPowerSample.create({
+        data: {
+          sessionId: session.id,
+          powerPercent: dto.powerPercent,
+        },
+      });
+
+      const [samples, heartbeatCount] = await Promise.all([
+        tx.miningPowerSample.findMany({
+          where: { sessionId: session.id },
+          orderBy: { recordedAt: 'asc' },
+        }),
+        tx.miningPowerSample.count({ where: { sessionId: session.id } }),
+      ]);
+
+      const telemetry = aggregateTelemetryFromSamples(
+        session.startedAt,
+        samples,
+      );
+
+      const updatedSession = await tx.miningSession.update({
+        where: { id: session.id },
+        data: {
+          totalSeconds: telemetry.totalSeconds,
+          secondsAbove80Percent: telemetry.secondsAbove80Percent,
+          avgPowerPercent: telemetry.avgPowerPercent,
+          peakPowerPercent: telemetry.peakPowerPercent,
+          hashrate: dto.hashrate ?? session.hashrate,
+          sharesAccepted: dto.sharesAccepted ?? session.sharesAccepted,
+        },
+      });
+
+      return {
+        sessionId: updatedSession.id,
+        status: updatedSession.status,
+        telemetry: {
+          totalSeconds: updatedSession.totalSeconds,
+          secondsAbove80Percent: updatedSession.secondsAbove80Percent,
+          avgPowerPercent: updatedSession.avgPowerPercent.toString(),
+          peakPowerPercent: updatedSession.peakPowerPercent.toString(),
+          hashrate: updatedSession.hashrate?.toString() ?? null,
+          sharesAccepted: updatedSession.sharesAccepted,
+          heartbeatCount,
+        },
+      };
+    });
+  }
+
+  async abortMiningSession(userId: string, sessionId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const session = await this.getActiveSessionForUser(tx, userId, sessionId);
+      const endedAt = new Date();
+      const samples = await tx.miningPowerSample.findMany({
+        where: { sessionId: session.id },
+        orderBy: { recordedAt: 'asc' },
+      });
+      const telemetry = aggregateTelemetryFromSamples(
+        session.startedAt,
+        samples,
+        endedAt,
+      );
+
+      const updatedSession = await tx.miningSession.update({
+        where: { id: session.id },
+        data: {
+          endedAt,
+          status: MiningSessionStatus.ABORTED,
+          totalSeconds: telemetry.totalSeconds,
+          secondsAbove80Percent: telemetry.secondsAbove80Percent,
+          avgPowerPercent: telemetry.avgPowerPercent,
+          peakPowerPercent: telemetry.peakPowerPercent,
+        },
+      });
+
+      return {
+        session: {
+          id: updatedSession.id,
+          status: updatedSession.status,
+          startedAt: updatedSession.startedAt,
+          endedAt: updatedSession.endedAt,
+          totalSeconds: updatedSession.totalSeconds,
+          secondsAbove80Percent: updatedSession.secondsAbove80Percent,
+        },
+      };
+    });
+  }
+
   async completeMiningSession(
     userId: string,
     sessionId: string,
@@ -224,24 +325,59 @@ export class GamificationService {
         throw new ConflictException('Mining session has already been completed');
       }
 
-      const xpEarned = calculateMiningXp(dto.secondsAbove80Percent);
+      const endedAt = new Date();
+      const samples = await tx.miningPowerSample.findMany({
+        where: { sessionId: session.id },
+        orderBy: { recordedAt: 'asc' },
+      });
+      const heartbeatCount = samples.length;
+      const telemetry = aggregateTelemetryFromSamples(
+        session.startedAt,
+        samples,
+        endedAt,
+      );
+
+      if (
+        telemetry.totalSeconds >= MIN_SECONDS_REQUIRING_HEARTBEATS &&
+        heartbeatCount < MIN_HEARTBEATS_FOR_SETTLEMENT
+      ) {
+        throw new BadRequestException(
+          'Mining session is missing required telemetry heartbeats',
+        );
+      }
+
+      const totalSeconds =
+        heartbeatCount > 0 ? telemetry.totalSeconds : dto.totalSeconds;
+      const secondsAbove80Percent =
+        heartbeatCount > 0
+          ? telemetry.secondsAbove80Percent
+          : dto.secondsAbove80Percent;
+      const avgPowerPercent =
+        heartbeatCount > 0
+          ? telemetry.avgPowerPercent
+          : new Prisma.Decimal(dto.avgPowerPercent ?? 0);
+      const peakPowerPercent =
+        heartbeatCount > 0
+          ? telemetry.peakPowerPercent
+          : new Prisma.Decimal(dto.peakPowerPercent ?? 0);
+
+      const xpEarned = calculateMiningXp(secondsAbove80Percent);
       const totalXp = user.xp + xpEarned;
       const newLevel = resolveLevelForXp(totalXp, levelConfigs);
-      const coinAmount = new Prisma.Decimal(dto.coinAmount);
+      const breakdown = calculateCommissionBreakdown(dto.rawMinedValue);
+      const coinAmount = calculateCoinReward(breakdown.userRewardValue);
       const balanceAfter = user.coinBalance.add(coinAmount);
-      const breakdown = calculateCommissionBreakdown(dto.rawMinedValue ?? '0');
-      const endedAt = new Date();
 
       const updatedSession = await tx.miningSession.update({
         where: { id: session.id },
         data: {
           endedAt,
-          totalSeconds: dto.totalSeconds,
-          secondsAbove80Percent: dto.secondsAbove80Percent,
-          avgPowerPercent: dto.avgPowerPercent ?? 0,
-          peakPowerPercent: dto.peakPowerPercent ?? 0,
-          hashrate: dto.hashrate,
-          sharesAccepted: dto.sharesAccepted,
+          totalSeconds,
+          secondsAbove80Percent,
+          avgPowerPercent,
+          peakPowerPercent,
+          hashrate: dto.hashrate ?? session.hashrate,
+          sharesAccepted: dto.sharesAccepted ?? session.sharesAccepted,
           rawMinedValue: breakdown.rawMinedValue,
           platformCommission: breakdown.platformCommission,
           userRewardValue: breakdown.userRewardValue,
@@ -401,5 +537,25 @@ export class GamificationService {
   ): number {
     const config = this.getCurrentLevelConfig(configs, level);
     return config?.referralPercent ?? configs.at(-1)?.referralPercent ?? 10;
+  }
+
+  private async getActiveSessionForUser(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    sessionId: string,
+  ) {
+    const session = await tx.miningSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session || session.userId !== userId) {
+      throw new NotFoundException('Mining session not found');
+    }
+
+    if (session.status !== MiningSessionStatus.ACTIVE) {
+      throw new ConflictException('Mining session is not active');
+    }
+
+    return session;
   }
 }

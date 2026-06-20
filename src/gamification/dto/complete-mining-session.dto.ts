@@ -22,20 +22,22 @@ export class CompleteMiningSessionDto {
   @ApiProperty({ minimum: 0, example: 1200 })
   secondsAbove80Percent: number;
 
-  @IsNumberString()
-  @ApiProperty({
-    description: 'Coin amount credited for the session (decimal as string).',
-    example: '12.50000000',
-  })
-  coinAmount: string;
-
   @IsOptional()
   @IsNumberString()
   @ApiPropertyOptional({
+    description:
+      'Deprecated. Coin rewards are calculated server-side from rawMinedValue.',
+    example: '12.50000000',
+    deprecated: true,
+  })
+  coinAmount?: string;
+
+  @IsNumberString()
+  @ApiProperty({
     description: 'Raw mined value before commissions (decimal as string).',
     example: '15.00000000',
   })
-  rawMinedValue?: string;
+  rawMinedValue: string;
 
   @IsOptional()
   @Type(() => Number)

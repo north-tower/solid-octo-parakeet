@@ -62,7 +62,7 @@ export class GamificationController {
   @ApiOperation({
     summary: 'Complete a mining session',
     description:
-      'Closes a mining session, applies coin rewards, XP, and referral commissions where applicable.',
+      'Closes a mining session, applies server-calculated coin rewards, XP, and referral commissions where applicable.',
   })
   completeMiningSession(
     @CurrentUser() user: JwtPayload,

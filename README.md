@@ -15,7 +15,7 @@ Project status as of now:
 - Phase 2 is done: core gamification logic is implemented in the backend.
 - Phase 3 is done: referral earnings logic and referral dashboard endpoints are implemented.
 - Phase 4 is done: rewards catalog, redemption requests, and manual fulfillment are implemented.
-- Phase 5 is not implemented yet: desktop mining integration is still pending.
+- Phase 5 is in progress: backend mining telemetry is implemented and the Electron desktop app scaffold is available under `desktop/`; XMRig bundling and production packaging are still pending.
 
 ## Feature Checklist
 
@@ -41,9 +41,12 @@ Project status as of now:
 | Rewards | Reward listing by game | Done | Available via `GET /rewards/games` and `GET /rewards/games/:gameSlug` |
 | Rewards | Reward redemption flow | Done | Users create pending requests via `POST /rewards/requests` |
 | Rewards | Manual fulfillment workflow | Done | Protected by `FULFILLMENT_API_KEY` under `/rewards/fulfillment` |
-| Desktop Mining | Electron shell | Pending | Phase 5 |
-| Desktop Mining | XMRig process control | Pending | Phase 5 |
-| Desktop Mining | Real mining telemetry -> backend | Pending | Phase 5 |
+| Desktop Mining | Session heartbeat telemetry | Done | `POST /gamification/mining-sessions/:sessionId/heartbeat` |
+| Desktop Mining | Session abort flow | Done | `POST /gamification/mining-sessions/:sessionId/abort` |
+| Desktop Mining | Server-side coin settlement | Done | Coins derived from `rawMinedValue` at `3.125` coins per user-reward unit |
+| Desktop Mining | Electron shell | Done | `desktop/` app with auth + dashboard |
+| Desktop Mining | XMRig process control | Done | Uses local XMRig when configured, simulated mode otherwise |
+| Desktop Mining | Real miner -> backend reporting | Done | Heartbeats + session complete wired to API |
 
 ## Roadmap Timeline
 
@@ -53,7 +56,7 @@ Project status as of now:
 | 2 | Gamification Engine | Done | Lock in the core business math and progression loop | XP, levels, coins, dashboard, session settlement |
 | 3 | Referral System | Done | Pay referrers from platform commission using level-based percentages | Referral earnings logic, referral stats endpoints |
 | 4 | Rewards Store | Done | Let users exchange coins for gamer rewards | Reward browsing, redemption requests, fulfillment workflow |
-| 5 | Mining Integration | Next | Connect the real desktop miner to the backend | Electron app, XMRig control, session reporting |
+| 5 | Mining Integration | In Progress | Connect the real desktop miner to the backend | Desktop app + API wiring done; packaging/hardening pending |
 
 ## Small Architecture
 
@@ -62,23 +65,24 @@ Current backend structure in simple terms:
 - `Prisma data layer` reads and writes all persistent state in PostgreSQL.
 - `Auth module` manages registration, login, JWT issuance, and referral-code-aware signup.
 - `Users module` exposes profile data for the logged-in user.
-- `Gamification module` contains the current Phase 2 business logic for mining session settlement, XP, levels, coins, and dashboard aggregation.
+- `Gamification module` contains mining session settlement, XP, levels, coins, dashboard aggregation, heartbeats, abort handling, and trusted coin calculation.
 - `Referrals module` contains Phase 3 referral earnings settlement and referral dashboard aggregation.
 - `Rewards module` contains Phase 4 reward catalog browsing, redemption requests, and manual fulfillment.
 - `Seed data` initializes level thresholds, referral percentages, and a starter reward catalog.
 
 Current request flow:
 1. the client authenticates with JWT;
-2. the client starts or completes a mining session through the API;
-3. the gamification service validates the user and session state;
-4. the service applies business rules for XP, coins, and levels;
-5. Prisma persists the updated user balance, XP events, coin transactions, and mining session summary.
+2. the client starts a mining session through the API;
+3. the desktop client sends periodic heartbeats with power, hashrate, and share telemetry;
+4. the client completes or aborts the session through the API;
+5. the gamification service validates telemetry, applies business rules for XP and server-calculated coins, and settles referrals;
+6. Prisma persists balances, `MiningPowerSample` rows, coin transactions, and the mining session summary.
 
-Planned high-level architecture after later phases:
+Planned high-level architecture still to finish:
 1. `Desktop app` will run Electron and manage the local miner process;
-2. `Miner integration` will collect hashrate, duration, and CPU usage data;
-3. `Backend API` will receive session updates and settle progression/rewards;
-4. `Referral subsystem` will calculate commission sharing from platform fees.
+2. `Miner integration` will collect hashrate, duration, and CPU usage data from XMRig;
+3. `Backend API` already receives session heartbeats and settles progression/rewards;
+4. `Referral subsystem` calculates commission sharing from platform fees.
 
 ## ERD-Style Schema Summary
 
@@ -210,6 +214,8 @@ Current gamification rules implemented:
 - `GET /gamification/me`
 - `PATCH /gamification/me/mining-power`
 - `POST /gamification/mining-sessions/start`
+- `POST /gamification/mining-sessions/:sessionId/heartbeat`
+- `POST /gamification/mining-sessions/:sessionId/abort`
 - `POST /gamification/mining-sessions/:sessionId/complete`
 
 ### Referrals
@@ -343,7 +349,6 @@ Example request:
 {
   "totalSeconds": 3600,
   "secondsAbove80Percent": 3600,
-  "coinAmount": "25.00000000",
   "rawMinedValue": "10.00000000",
   "avgPowerPercent": 82,
   "peakPowerPercent": 90,
@@ -351,6 +356,8 @@ Example request:
   "sharesAccepted": 4
 }
 ```
+
+When heartbeats exist, duration and power aggregates are derived server-side from `MiningPowerSample` rows. Sessions longer than `60` seconds require at least one heartbeat before completion. Coin rewards are calculated server-side from `rawMinedValue`.
 
 Example response:
 
@@ -387,7 +394,7 @@ Example response:
 ### Notes On The Payloads
 
 - Decimal values are generally returned as strings.
-- `coinAmount` is the internal gamified reward currency credited to the user.
+- `coinAmount` in the completion response is calculated server-side from `rawMinedValue` using `3.125` coins per user-reward unit.
 - `rawMinedValue`, `platformCommission`, and `userRewardValue` represent the economic split of the mining session.
 - The XP rule only awards points for full qualified hours above `80%` power.
 
@@ -573,6 +580,59 @@ Example response:
 }
 ```
 
+## Phase 5 API Examples
+
+All mining integration endpoints below require a bearer token.
+
+### `POST /gamification/mining-sessions/:sessionId/heartbeat`
+
+Send every 30–60 seconds while mining.
+
+Example request:
+
+```json
+{
+  "powerPercent": 65,
+  "hashrate": "2500.00000000",
+  "sharesAccepted": 4
+}
+```
+
+Example response:
+
+```json
+{
+  "sessionId": "94ffb0cb-22d8-4ca2-92a5-77c93b43d01f",
+  "status": "ACTIVE",
+  "telemetry": {
+    "totalSeconds": 120,
+    "secondsAbove80Percent": 0,
+    "avgPowerPercent": "65",
+    "peakPowerPercent": "65",
+    "hashrate": "2500.00000000",
+    "sharesAccepted": 4,
+    "heartbeatCount": 2
+  }
+}
+```
+
+### `POST /gamification/mining-sessions/:sessionId/abort`
+
+Example response:
+
+```json
+{
+  "session": {
+    "id": "94ffb0cb-22d8-4ca2-92a5-77c93b43d01f",
+    "status": "ABORTED",
+    "startedAt": "2026-06-12T12:00:00.000Z",
+    "endedAt": "2026-06-12T12:10:00.000Z",
+    "totalSeconds": 600,
+    "secondsAbove80Percent": 0
+  }
+}
+```
+
 ## What Phase 2 Returns
 
 The backend now supports a frontend dashboard with:
@@ -650,39 +710,60 @@ Main Phase 4 backend work:
 Test files added:
 - `src/rewards/rewards.service.spec.ts`
 
-## What Is Remaining
+### Phase 5: Mining Integration (Backend)
 
-### Phase 5: Mining Integration
+Implemented:
+- mining session heartbeat endpoint with `MiningPowerSample` persistence
+- session abort endpoint for crash/cancel flows without rewards
+- server-side coin calculation from `rawMinedValue`
+- telemetry aggregation for duration, qualified seconds, and average/peak power
+- heartbeat requirement for sessions longer than `60` seconds
+
+Main Phase 5 backend work:
+- `src/gamification/mining-integration.controller.ts`
+- `src/gamification/dto/mining-session-heartbeat.dto.ts`
+- `src/gamification/gamification.utils.ts`
+- `src/gamification/gamification.service.ts`
+- `src/gamification/gamification.module.ts`
 
 Still to build:
-- Electron desktop shell
-- local XMRig process management
-- CPU usage configuration based on slider value
-- mining stats capture from miner output
-- real mining session reporting to the backend
-- session heartbeat or periodic reporting strategy
-- secure communication between desktop app and backend
+- production installer / auto-update packaging
+- bundled XMRig binaries per platform
+- stronger desktop trust and anti-tamper checks
 
-## Suggested Next Backend Step
+## Desktop App
 
-Recommended next phase:
-1. build the Electron desktop shell;
-2. integrate local XMRig process control;
-3. report real mining telemetry to the existing session endpoints.
+The Electron client lives in `desktop/`.
+
+```bash
+cd desktop
+pnpm install
+cp .env.example .env
+pnpm run dev
+```
+
+See `desktop/README.md` for XMRig configuration and development notes.
+
+## Suggested Next Step
+
+Recommended next work:
+1. bundle XMRig per OS and validate pool payout reporting;
+2. add production packaging for the desktop app;
+3. harden telemetry validation and anti-abuse rules on the backend.
 
 ## Notes About The Current State
 
-- This repository currently contains the backend only.
-- Mining itself is not connected yet; Phase 2 supports fake or simulated mining session settlement.
-- The current system is ready for frontend work against auth, profile, gamification, referral, and rewards endpoints.
+- This repository currently contains the backend only; the desktop app is the remaining Phase 5 work.
+- Mining settlement now uses server-side coin calculation and optional heartbeat telemetry.
+- The current system is ready for frontend or desktop work against auth, profile, gamification, referral, and rewards endpoints.
 - The schema was designed ahead of time so the remaining phases can build on the same data model.
 
 ## Known Gaps And Assumptions
 
 ### Business Logic Assumptions
 
-- `coinAmount` is currently treated as the internal reward currency credited to the user, not as a direct fiat value.
-- The relationship between mined Monero value and internal coins is not fully defined yet and may need a formal conversion rule.
+- `coinAmount` is calculated server-side from `rawMinedValue` using `3.125` coins per user-reward unit.
+- `rawMinedValue` is still reported by the client for now and may later be validated against pool or miner data.
 - The current XP rule only considers full hours above `80%` power and does not yet include streaks, daily bonuses, achievements, or anti-abuse logic.
 - The level system currently depends entirely on seeded `level_config`; if progression rules change, the seed data and migration strategy will need review.
 - Referral earnings are assumed to come only from platform commission, never from the invited user reward.
@@ -705,11 +786,11 @@ Recommended next phase:
 
 ### Technical Gaps
 
-- `MiningPowerSample` exists in the schema but is not populated yet.
+- `MiningPowerSample` is populated by heartbeat requests.
 - `RefreshToken` exists in the schema but refresh-token issuance and rotation are not currently exposed in the API.
 - Rewards redemption and manual fulfillment are implemented end-to-end for MVP.
 - Referral earnings are implemented end-to-end for mining session settlement and dashboard reporting.
-- Desktop miner communication, telemetry validation, and secure reporting are still future work.
+- Desktop miner communication beyond API contracts is still future work.
 
 ## Local Development
 

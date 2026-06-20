@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { LevelConfigSnapshot } from '../common/services/level.service';
 import {
+  aggregateTelemetryFromSamples,
+  calculateCoinReward,
   calculateCommissionBreakdown,
   calculateMiningXp,
   calculateReferralEarning,
@@ -60,5 +62,30 @@ describe('gamification utils', () => {
         12,
       ),
     ).toBeNull();
+  });
+
+  it('calculates coin rewards from user reward value', () => {
+    const breakdown = calculateCommissionBreakdown('10');
+
+    expect(calculateCoinReward(breakdown.userRewardValue).toString()).toBe('25');
+  });
+
+  it('aggregates seconds above 80 percent from power samples', () => {
+    const startedAt = new Date('2026-06-12T12:00:00.000Z');
+    const endedAt = new Date('2026-06-12T13:00:00.000Z');
+    const telemetry = aggregateTelemetryFromSamples(
+      startedAt,
+      [
+        {
+          recordedAt: new Date('2026-06-12T12:00:00.000Z'),
+          powerPercent: '82',
+        },
+      ],
+      endedAt,
+    );
+
+    expect(telemetry.totalSeconds).toBe(3600);
+    expect(telemetry.secondsAbove80Percent).toBe(3600);
+    expect(telemetry.avgPowerPercent.toString()).toBe('82');
   });
 });

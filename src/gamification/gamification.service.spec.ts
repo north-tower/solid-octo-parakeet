@@ -1,4 +1,7 @@
-import { ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { CoinTransactionType, MiningSessionStatus, Prisma } from '@prisma/client';
 import { LevelService } from '../common/services/level.service';
 import { PrismaService } from '../database/prisma.service';
@@ -21,6 +24,11 @@ describe('GamificationService', () => {
       miningSession: {
         findUnique: jest.fn(),
         update: jest.fn(),
+      },
+      miningPowerSample: {
+        create: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
       },
       coinTransaction: {
         create: jest.fn(),
@@ -48,8 +56,22 @@ describe('GamificationService', () => {
     };
   };
 
-  it('settles a mining session with coins, xp, and a level up', async () => {
+  const mockHeartbeatSamples = (
+    tx: ReturnType<typeof createService>['tx'],
+    startedAt: Date,
+    powerPercent: string,
+  ) => {
+    tx.miningPowerSample.findMany.mockResolvedValue([
+      {
+        recordedAt: startedAt,
+        powerPercent: new Prisma.Decimal(powerPercent),
+      },
+    ]);
+  };
+
+  it('settles a mining session with server-calculated coins, xp, and a level up', async () => {
     const { service, tx } = createService();
+    const startedAt = new Date(Date.now() - 3600 * 1000);
     const user = {
       id: 'user-1',
       xp: 496,
@@ -61,11 +83,14 @@ describe('GamificationService', () => {
       id: 'session-1',
       userId: 'user-1',
       status: MiningSessionStatus.ACTIVE,
-      startedAt: new Date('2026-01-01T00:00:00.000Z'),
+      startedAt,
+      hashrate: null,
+      sharesAccepted: null,
     };
 
     tx.user.findUnique.mockResolvedValue(user);
     tx.miningSession.findUnique.mockResolvedValue(session);
+    mockHeartbeatSamples(tx, startedAt, '82');
     tx.miningSession.update.mockImplementation(async ({ data }) => ({
       ...session,
       ...data,
@@ -83,7 +108,6 @@ describe('GamificationService', () => {
     const result = await service.completeMiningSession('user-1', 'session-1', {
       totalSeconds: 3600,
       secondsAbove80Percent: 3600,
-      coinAmount: '25',
       rawMinedValue: '10',
       avgPowerPercent: 82,
       peakPowerPercent: 90,
@@ -94,7 +118,7 @@ describe('GamificationService', () => {
     expect(result.progression.xpEarned).toBe(5);
     expect(result.progression.currentLevel).toBe(2);
     expect(result.progression.leveledUp).toBe(true);
-    expect(result.progression.xpToNextLevel).toBe(549);
+    expect(result.rewards.coinAmount).toBe('25');
     expect(result.rewards.balanceAfter).toBe('125');
     expect(result.session.platformCommission).toBe('2');
     expect(result.session.userRewardValue).toBe('8');
@@ -105,6 +129,7 @@ describe('GamificationService', () => {
 
   it('skips xp events when there is no full bonus hour', async () => {
     const { service, tx } = createService();
+    const startedAt = new Date(Date.now() - 3599 * 1000);
     const user = {
       id: 'user-2',
       xp: 120,
@@ -116,11 +141,14 @@ describe('GamificationService', () => {
       id: 'session-2',
       userId: 'user-2',
       status: MiningSessionStatus.ACTIVE,
-      startedAt: new Date('2026-01-01T00:00:00.000Z'),
+      startedAt,
+      hashrate: null,
+      sharesAccepted: null,
     };
 
     tx.user.findUnique.mockResolvedValue(user);
     tx.miningSession.findUnique.mockResolvedValue(session);
+    mockHeartbeatSamples(tx, startedAt, '79.5');
     tx.miningSession.update.mockImplementation(async ({ data }) => ({
       ...session,
       ...data,
@@ -138,13 +166,14 @@ describe('GamificationService', () => {
     const result = await service.completeMiningSession('user-2', 'session-2', {
       totalSeconds: 3599,
       secondsAbove80Percent: 3599,
-      coinAmount: '3',
+      rawMinedValue: '1.2',
       avgPowerPercent: 79.5,
       peakPowerPercent: 80,
     });
 
     expect(result.progression.xpEarned).toBe(0);
     expect(result.progression.currentLevel).toBe(1);
+    expect(result.rewards.coinAmount).toBe('3');
     expect(result.rewards.balanceAfter).toBe('8');
     expect(tx.coinTransaction.create).toHaveBeenCalledTimes(1);
     expect(tx.xpEvent.create).not.toHaveBeenCalled();
@@ -170,13 +199,107 @@ describe('GamificationService', () => {
       service.completeMiningSession('user-3', 'session-3', {
         totalSeconds: 3600,
         secondsAbove80Percent: 3600,
-        coinAmount: '1',
+        rawMinedValue: '1',
       }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('requires heartbeats for sessions longer than 60 seconds', async () => {
+    const { service, tx } = createService();
+    const startedAt = new Date(Date.now() - 3600 * 1000);
+
+    tx.user.findUnique.mockResolvedValue({
+      id: 'user-5',
+      xp: 0,
+      level: 1,
+      coinBalance: new Prisma.Decimal('0'),
+    });
+    tx.miningSession.findUnique.mockResolvedValue({
+      id: 'session-5',
+      userId: 'user-5',
+      status: MiningSessionStatus.ACTIVE,
+      startedAt,
+      hashrate: null,
+      sharesAccepted: null,
+    });
+    tx.miningPowerSample.findMany.mockResolvedValue([]);
+
+    await expect(
+      service.completeMiningSession('user-5', 'session-5', {
+        totalSeconds: 3600,
+        secondsAbove80Percent: 3600,
+        rawMinedValue: '10',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('records a heartbeat and updates session telemetry', async () => {
+    const { service, tx } = createService();
+    const startedAt = new Date(Date.now() - 120 * 1000);
+    const session = {
+      id: 'session-6',
+      userId: 'user-6',
+      status: MiningSessionStatus.ACTIVE,
+      startedAt,
+      hashrate: null,
+      sharesAccepted: null,
+    };
+
+    tx.miningSession.findUnique.mockResolvedValue(session);
+    tx.miningPowerSample.create.mockResolvedValue({});
+    tx.miningPowerSample.findMany.mockResolvedValue([
+      {
+        recordedAt: startedAt,
+        powerPercent: new Prisma.Decimal('65'),
+      },
+    ]);
+    tx.miningPowerSample.count.mockResolvedValue(1);
+    tx.miningSession.update.mockImplementation(async ({ data }) => ({
+      ...session,
+      ...data,
+      avgPowerPercent: new Prisma.Decimal(data.avgPowerPercent),
+      peakPowerPercent: new Prisma.Decimal(data.peakPowerPercent),
+    }));
+
+    const result = await service.recordHeartbeat('user-6', 'session-6', {
+      powerPercent: 65,
+      hashrate: '2500',
+      sharesAccepted: 2,
+    });
+
+    expect(result.telemetry.heartbeatCount).toBe(1);
+    expect(result.telemetry.hashrate).toBe('2500');
+    expect(tx.miningPowerSample.create).toHaveBeenCalled();
+  });
+
+  it('aborts an active session without rewarding coins', async () => {
+    const { service, tx } = createService();
+    const startedAt = new Date(Date.now() - 600 * 1000);
+    const session = {
+      id: 'session-7',
+      userId: 'user-7',
+      status: MiningSessionStatus.ACTIVE,
+      startedAt,
+    };
+
+    tx.miningSession.findUnique.mockResolvedValue(session);
+    tx.miningPowerSample.findMany.mockResolvedValue([]);
+    tx.miningSession.update.mockImplementation(async ({ data }) => ({
+      ...session,
+      ...data,
+      avgPowerPercent: new Prisma.Decimal(data.avgPowerPercent),
+      peakPowerPercent: new Prisma.Decimal(data.peakPowerPercent),
+    }));
+
+    const result = await service.abortMiningSession('user-7', 'session-7');
+
+    expect(result.session.status).toBe(MiningSessionStatus.ABORTED);
+    expect(tx.coinTransaction?.create).toBeUndefined();
+  });
+
   it('credits referral earnings to the referrer from platform commission', async () => {
     const { service, tx } = createService();
+    const startedAt = new Date(Date.now() - 3600 * 1000);
     const user = {
       id: 'user-4',
       xp: 0,
@@ -194,13 +317,16 @@ describe('GamificationService', () => {
       id: 'session-4',
       userId: 'user-4',
       status: MiningSessionStatus.ACTIVE,
-      startedAt: new Date('2026-01-01T00:00:00.000Z'),
+      startedAt,
+      hashrate: null,
+      sharesAccepted: null,
     };
 
     tx.user.findUnique
       .mockResolvedValueOnce(user)
       .mockResolvedValueOnce(referrer);
     tx.miningSession.findUnique.mockResolvedValue(session);
+    mockHeartbeatSamples(tx, startedAt, '82');
     tx.miningSession.update.mockImplementation(async ({ data }) => ({
       ...session,
       ...data,
@@ -217,7 +343,6 @@ describe('GamificationService', () => {
     const result = await service.completeMiningSession('user-4', 'session-4', {
       totalSeconds: 3600,
       secondsAbove80Percent: 3600,
-      coinAmount: '25',
       rawMinedValue: '10',
       avgPowerPercent: 82,
       peakPowerPercent: 90,

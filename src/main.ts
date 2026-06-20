@@ -21,7 +21,7 @@ async function bootstrap() {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Gaming Rewards API')
     .setDescription(
-      'API for authentication, user profiles, gamified mining sessions, referral earnings, and reward redemptions. Phase 1 covers Auth and Users. Phase 2 covers Gamification. Phase 3 covers Referrals. Phase 4 covers Rewards.',
+      'API for authentication, user profiles, gamified mining sessions, referral earnings, reward redemptions, and desktop mining telemetry. Phase 1 covers Auth and Users. Phase 2 covers Gamification. Phase 3 covers Referrals. Phase 4 covers Rewards. Phase 5 covers Mining Integration.',
     )
     .setVersion('1.0')
     .addBearerAuth()
@@ -39,6 +39,10 @@ async function bootstrap() {
     .addTag(
       'Phase 4 - Rewards Fulfillment',
       'Manual fulfillment workflow for pending reward requests.',
+    )
+    .addTag(
+      'Phase 5 - Mining Integration',
+      'Desktop miner heartbeats, session abort, and trusted settlement.',
     )
     .build();
 
