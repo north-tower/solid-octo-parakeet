@@ -1,33 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import type { MinerStats } from '@shared/constants';
-import { HEARTBEAT_INTERVAL_MS } from '@shared/constants';
-import { api, type DashboardResponse } from '../api/client';
 import { AnimatedHashrate } from '../components/AnimatedHashrate';
 import { PowerSlider } from '../components/PowerSlider';
-import { ReferralModal } from '../components/ReferralModal';
-import { useToast } from '../components/Toast';
-import { useAuth } from '../contexts/AuthContext';
-import { getInitials } from '../utils/validation';
+import { useMining } from '../contexts/MiningContext';
+import { formatCoins, formatDuration } from '../utils/format';
 
-function formatDuration(totalSeconds: number) {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${hours}h ${minutes}m ${seconds}s`;
-}
-
-function formatCoins(value: string) {
-  const parsed = Number.parseFloat(value);
-  if (Number.isNaN(parsed)) {
-    return value;
-  }
-  return parsed.toLocaleString(undefined, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 8,
-  });
-}
-
-function levelProgress(dashboard: DashboardResponse) {
+function levelProgress(dashboard: NonNullable<ReturnType<typeof useMining>['dashboard']>) {
   const { xp, currentLevelXpFloor, nextLevelXpTarget } = dashboard.progression;
   if (!nextLevelXpTarget) {
     return 100;
@@ -40,212 +16,40 @@ function levelProgress(dashboard: DashboardResponse) {
 }
 
 export function DashboardPage() {
-  const { logout, userLabel } = useAuth();
-  const { showToast } = useToast();
-  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
-  const [power, setPower] = useState(50);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [minerStats, setMinerStats] = useState<MinerStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [walletFlash, setWalletFlash] = useState(false);
-  const [referralOpen, setReferralOpen] = useState(false);
-  const previousBalance = useRef<string | null>(null);
-
-  const refreshDashboard = async () => {
-    const data = await api.getDashboard();
-    setDashboard(data);
-    setPower(data.profile.miningPowerPercent);
-    if (data.activeSession) {
-      setSessionId(data.activeSession.id);
-    }
-
-    if (
-      previousBalance.current !== null &&
-      previousBalance.current !== data.wallet.coinBalance
-    ) {
-      setWalletFlash(true);
-      window.setTimeout(() => setWalletFlash(false), 1200);
-    }
-    previousBalance.current = data.wallet.coinBalance;
-  };
-
-  useEffect(() => {
-    void refreshDashboard().catch((refreshError) => {
-      setError(
-        refreshError instanceof Error
-          ? refreshError.message
-          : 'Failed to load dashboard',
-      );
-    });
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = window.desktop.mining.onStats((stats) => {
-      setMinerStats(stats);
-    });
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    if (!sessionId || !minerStats?.running) {
-      return;
-    }
-
-    const sendHeartbeat = async () => {
-      try {
-        await api.sendHeartbeat(sessionId, {
-          powerPercent: minerStats.powerPercent,
-          hashrate: minerStats.hashrate.toFixed(8),
-          sharesAccepted: minerStats.sharesAccepted,
-        });
-      } catch (heartbeatError) {
-        const message =
-          heartbeatError instanceof Error
-            ? heartbeatError.message
-            : 'Heartbeat failed';
-        showToast(message, 'error');
-      }
-    };
-
-    void sendHeartbeat();
-    const timer = window.setInterval(() => {
-      void sendHeartbeat();
-    }, HEARTBEAT_INTERVAL_MS);
-
-    return () => window.clearInterval(timer);
-  }, [
+  const {
+    dashboard,
+    power,
     sessionId,
-    minerStats?.running,
-    minerStats?.powerPercent,
-    minerStats?.hashrate,
-    minerStats?.sharesAccepted,
-    showToast,
-  ]);
-
-  const startMining = async () => {
-    setBusy(true);
-    setError(null);
-
-    try {
-      await api.updateMiningPower(power);
-      const session = await api.startSession(power);
-      setSessionId(session.id);
-      const stats = await window.desktop.mining.start(power);
-      setMinerStats(stats);
-      showToast(
-        stats.mode === 'xmrig'
-          ? 'Mining started with XMRig'
-          : 'Mining started in simulated mode',
-        'info',
-      );
-      await refreshDashboard();
-    } catch (startError) {
-      const message =
-        startError instanceof Error ? startError.message : 'Failed to start mining';
-      setError(message);
-      showToast(message, 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const stopMining = async () => {
-    if (!sessionId) {
-      return;
-    }
-
-    setBusy(true);
-    setError(null);
-
-    try {
-      const stats = await window.desktop.mining.stop();
-      setMinerStats(stats);
-
-      const result = await api.completeSession(sessionId, {
-        totalSeconds: stats.totalSeconds,
-        secondsAbove80Percent: stats.secondsAbove80Percent,
-        rawMinedValue: stats.rawMinedValue,
-        avgPowerPercent: Number(stats.avgPowerPercent.toFixed(2)),
-        peakPowerPercent: Number(stats.peakPowerPercent.toFixed(2)),
-        hashrate: stats.hashrate.toFixed(8),
-        sharesAccepted: stats.sharesAccepted,
-      });
-
-      setSessionId(null);
-      const levelNote = result.progression.leveledUp ? ' Level up!' : '';
-      showToast(
-        `Session complete! +${formatCoins(result.rewards.coinAmount)} coins.${levelNote}`,
-        'success',
-      );
-      await refreshDashboard();
-    } catch (stopError) {
-      const message =
-        stopError instanceof Error ? stopError.message : 'Failed to stop mining';
-      setError(message);
-      showToast(message, 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const abortMining = async () => {
-    if (!sessionId) {
-      return;
-    }
-
-    setBusy(true);
-    setError(null);
-
-    try {
-      await window.desktop.mining.stop();
-      await api.abortSession(sessionId);
-      setSessionId(null);
-      setMinerStats(null);
-      showToast('Mining session aborted', 'info');
-      await refreshDashboard();
-    } catch (abortError) {
-      const message =
-        abortError instanceof Error ? abortError.message : 'Failed to abort mining';
-      setError(message);
-      showToast(message, 'error');
-    } finally {
-      setBusy(false);
-    }
-  };
+    minerStats,
+    busy,
+    error,
+    walletFlash,
+    isMining,
+    setPower,
+    startMining,
+    stopMining,
+    abortMining,
+  } = useMining();
 
   if (!dashboard) {
     return <div className="loading">Loading dashboard…</div>;
   }
 
-  const isMining = Boolean(sessionId && minerStats?.running);
   const isFirstRun =
     Number.parseFloat(dashboard.wallet.coinBalance) === 0 &&
     dashboard.mining.completedSessions === 0;
   const progress = levelProgress(dashboard);
 
   return (
-    <div className="dashboard">
-      <header className="topbar">
+    <div className="page">
+      <header className="page-header">
         <div>
-          <p className="eyebrow">Gamer Mining Rewards</p>
+          <p className="eyebrow">Overview</p>
           <h1>Dashboard</h1>
-        </div>
-        <div className="topbar-user">
-          <div className="avatar" aria-hidden="true">
-            {getInitials(userLabel)}
-          </div>
-          <div className="topbar-user-meta">
-            <strong>{userLabel}</strong>
-            <span className="muted">Level {dashboard.progression.level}</span>
-          </div>
-          <button className="ghost" type="button" onClick={logout}>
-            Sign out
-          </button>
         </div>
       </header>
 
-      <section className="grid">
+      <section className="grid grid-4">
         <article className={`panel wallet-hero ${walletFlash ? 'wallet-flash' : ''}`}>
           <h2>Wallet</h2>
           <p className="metric">{formatCoins(dashboard.wallet.coinBalance)}</p>
@@ -264,16 +68,21 @@ export function DashboardPage() {
           </p>
         </article>
 
-        <button
-          type="button"
-          className="panel stat-card stat-card-button"
-          onClick={() => setReferralOpen(true)}
-        >
-          <h2>Referrals</h2>
-          <p className="metric">{dashboard.profile.referralsCount}</p>
-          <p className="metric-caption">friends invited</p>
-          <p className="muted">Tap to share code {dashboard.profile.referralCode}</p>
-        </button>
+        <article className="panel stat-card">
+          <h2>Sessions</h2>
+          <p className="metric">{dashboard.mining.completedSessions}</p>
+          <p className="metric-caption">completed mining runs</p>
+          <p className="muted">
+            {formatDuration(dashboard.mining.totalSecondsMined)} total mined
+          </p>
+        </article>
+
+        <article className="panel stat-card">
+          <h2>Referral rate</h2>
+          <p className="metric">{dashboard.progression.referralPercent}%</p>
+          <p className="metric-caption">commission on friend earnings</p>
+          <p className="muted">{dashboard.profile.referralsCount} friends referred</p>
+        </article>
       </section>
 
       {isFirstRun && !isMining && (
@@ -359,14 +168,6 @@ export function DashboardPage() {
         {error && <p className="error">{error}</p>}
         {minerStats?.lastError && <p className="error">{minerStats.lastError}</p>}
       </section>
-
-      {referralOpen && (
-        <ReferralModal
-          referralCode={dashboard.profile.referralCode}
-          referralsCount={dashboard.profile.referralsCount}
-          onClose={() => setReferralOpen(false)}
-        />
-      )}
     </div>
   );
 }

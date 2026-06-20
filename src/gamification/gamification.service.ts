@@ -16,6 +16,7 @@ import {
 } from '../common/services/level.service';
 import { PrismaService } from '../database/prisma.service';
 import { CompleteMiningSessionDto } from './dto/complete-mining-session.dto';
+import { ListMiningSessionsDto } from './dto/list-mining-sessions.dto';
 import { MiningSessionHeartbeatDto } from './dto/mining-session-heartbeat.dto';
 import { StartMiningSessionDto } from './dto/start-mining-session.dto';
 import { UpdateMiningPowerDto } from './dto/update-mining-power.dto';
@@ -259,6 +260,77 @@ export class GamificationService {
         },
       };
     });
+  }
+
+  async getSessionHistory(userId: string, query: ListMiningSessionsDto) {
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      userId,
+      status: MiningSessionStatus.COMPLETED,
+    };
+
+    const [sessions, total] = await Promise.all([
+      this.prisma.miningSession.findMany({
+        where,
+        orderBy: { endedAt: 'desc' },
+        skip,
+        take: limit,
+        select: {
+          id: true,
+          startedAt: true,
+          endedAt: true,
+          totalSeconds: true,
+          hashrate: true,
+          sharesAccepted: true,
+          userRewardValue: true,
+        },
+      }),
+      this.prisma.miningSession.count({ where }),
+    ]);
+
+    const sessionIds = sessions.map((session) => session.id);
+    const coinTransactions =
+      sessionIds.length > 0
+        ? await this.prisma.coinTransaction.findMany({
+            where: {
+              userId,
+              type: CoinTransactionType.MINING_REWARD,
+              referenceType: 'mining_session',
+              referenceId: { in: sessionIds },
+            },
+            select: {
+              referenceId: true,
+              amount: true,
+            },
+          })
+        : [];
+
+    const coinsBySession = new Map(
+      coinTransactions.map((tx) => [tx.referenceId, tx.amount.toString()]),
+    );
+
+    return {
+      sessions: sessions.map((session) => ({
+        id: session.id,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        totalSeconds: session.totalSeconds,
+        hashrate: session.hashrate?.toString() ?? null,
+        sharesAccepted: session.sharesAccepted ?? 0,
+        coinsEarned:
+          coinsBySession.get(session.id) ??
+          calculateCoinReward(session.userRewardValue).toString(),
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
+    };
   }
 
   async abortMiningSession(userId: string, sessionId: string) {

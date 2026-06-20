@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
@@ -12,6 +13,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { JwtPayload } from '../common/decorators/current-user.decorator';
 import { CompleteMiningSessionDto } from './dto/complete-mining-session.dto';
+import { ListMiningSessionsDto } from './dto/list-mining-sessions.dto';
 import { StartMiningSessionDto } from './dto/start-mining-session.dto';
 import { UpdateMiningPowerDto } from './dto/update-mining-power.dto';
 import { GamificationService } from './gamification.service';
@@ -43,6 +45,19 @@ export class GamificationController {
     @Body() dto: UpdateMiningPowerDto,
   ) {
     return this.gamificationService.updateMiningPower(user.sub, dto);
+  }
+
+  @Get('mining-sessions/history')
+  @ApiOperation({
+    summary: 'List completed mining sessions',
+    description:
+      'Returns paginated history of completed mining sessions for the authenticated user.',
+  })
+  getSessionHistory(
+    @CurrentUser() user: JwtPayload,
+    @Query() query: ListMiningSessionsDto,
+  ) {
+    return this.gamificationService.getSessionHistory(user.sub, query);
   }
 
   @Post('mining-sessions/start')

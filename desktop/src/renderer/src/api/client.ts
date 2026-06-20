@@ -134,6 +134,93 @@ export interface ReferralValidationResponse {
   referrerDisplayName?: string;
 }
 
+export interface UserProfileResponse {
+  id: string;
+  email: string;
+  displayName: string | null;
+  referralCode: string;
+  xp: number;
+  level: number;
+  coinBalance: string;
+  miningPowerPercent: number;
+  referralPercent: number;
+  xpToNextLevel: number | null;
+  referralsCount: number;
+  totalReferralEarnings: string;
+  createdAt: string;
+}
+
+export interface SessionHistoryResponse {
+  sessions: Array<{
+    id: string;
+    startedAt: string;
+    endedAt: string | null;
+    totalSeconds: number;
+    hashrate: string | null;
+    sharesAccepted: number;
+    coinsEarned: string;
+  }>;
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ReferralsDashboardResponse {
+  profile: {
+    referralCode: string;
+    referralsCount: number;
+  };
+  progression: {
+    level: number;
+    xp: number;
+    referralPercent: number;
+    currentLevelXpFloor: number;
+    nextLevelXpTarget: number | null;
+    xpToNextLevel: number | null;
+    nextLevelReferralPercent: number | null;
+  };
+  earnings: {
+    totalEarned: string;
+    totalSessions: number;
+  };
+  referredUsers: Array<{
+    id: string;
+    displayName: string | null;
+    email: string;
+    joinedAt: string;
+    totalEarnedFromUser: string;
+    sessionsCount: number;
+  }>;
+  recentEarnings: Array<{
+    id: string;
+    amountEarned: string;
+    commissionBase: string;
+    referrerRate: string;
+    referredUser: {
+      id: string;
+      displayName: string | null;
+      email: string;
+    };
+    miningSessionId: string;
+    createdAt: string;
+  }>;
+}
+
+export interface RewardRequestItem {
+  id: string;
+  status: string;
+  createdAt: string;
+  catalogItem: {
+    id: string;
+    name: string;
+    gameSlug: string;
+    coinCost: string;
+  };
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<AuthResponse>('/auth/login', {
@@ -158,6 +245,39 @@ export const api = {
     ),
 
   getDashboard: () => request<DashboardResponse>('/gamification/me'),
+
+  getProfile: () => request<UserProfileResponse>('/users/me'),
+
+  updateProfile: (displayName: string) =>
+    request<{ id: string; email: string; displayName: string | null }>(
+      '/users/me',
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ displayName }),
+      },
+    ),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ success: boolean }>('/users/me/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  getSessionHistory: (page = 1, limit = 20) =>
+    request<SessionHistoryResponse>(
+      `/gamification/mining-sessions/history?page=${page}&limit=${limit}`,
+    ),
+
+  getReferrals: () => request<ReferralsDashboardResponse>('/referrals/me'),
+
+  getRewardRequests: () =>
+    request<{ requests: RewardRequestItem[] }>('/rewards/requests/me'),
+
+  createRewardRequest: (catalogItemId: string) =>
+    request('/rewards/requests', {
+      method: 'POST',
+      body: JSON.stringify({ catalogItemId }),
+    }),
 
   updateMiningPower: (miningPowerPercent: number) =>
     request<{ miningPowerPercent: number }>('/gamification/me/mining-power', {

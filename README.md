@@ -836,7 +836,47 @@ docker compose down -v
 docker compose up --build -d
 ```
 
-If the app logs `P1000: Authentication failed`, the database volume password does not match `.env`. Run the reset commands above, or set `POSTGRES_PASSWORD` back to the value used when the volume was first created.
+If the app logs `P1000: Authentication failed`, the database volume password does not match `.env`. The `db` container can look healthy while TCP password auth fails (stale volume from an earlier deploy).
+
+**Option A — fix password without losing data** (run on the VPS):
+
+```bash
+chmod +x scripts/fix-db-password.sh
+./scripts/fix-db-password.sh
+```
+
+Or manually:
+
+```bash
+docker compose exec db psql -U postgres -c "ALTER USER postgres WITH PASSWORD 'postgres';"
+docker compose restart app
+docker compose logs -f app
+```
+
+Use the same password as `POSTGRES_PASSWORD` in your `.env`.
+
+**Option B — wipe the database and start fresh** (all data lost):
+
+```bash
+chmod +x scripts/reset-docker-db.sh
+./scripts/reset-docker-db.sh
+```
+
+Or manually:
+
+```bash
+docker compose down -v --remove-orphans
+docker compose up --build -d
+docker compose logs -f app
+```
+
+On the VPS `.env`, **remove or comment out any `DATABASE_URL=` line** — it is for local dev only and must not point at `localhost`.
+
+Also check for Windows line endings in `.env` (can break passwords):
+
+```bash
+sed -i 's/\r$//' .env
+```
 
 You can override the default container environment in `.env`:
 
