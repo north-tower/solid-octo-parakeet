@@ -849,6 +849,7 @@ PORT=3000
 JWT_SECRET=change-me-in-production
 JWT_EXPIRES_IN=7d
 FULFILLMENT_API_KEY=change-me-for-fulfillment
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 ```
 
 Useful Docker commands:

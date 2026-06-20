@@ -17,6 +17,19 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
+  const corsOrigins = configService
+    .get<string>(
+      'CORS_ORIGINS',
+      'http://localhost:5173,http://127.0.0.1:5173',
+    )
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: corsOrigins,
+    credentials: true,
+  });
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Gaming Rewards API')
