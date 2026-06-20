@@ -1,7 +1,13 @@
-import { AnimatedHashrate } from '../components/AnimatedHashrate';
-import { PowerSlider } from '../components/PowerSlider';
+import { Clock, Trophy, Users } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
 import { useMining } from '../contexts/MiningContext';
-import { formatCoins, formatDuration } from '../utils/format';
+import { formatDuration } from '../utils/format';
+import { FirstRunCard, getFirstRunDismissed, setFirstRunDismissed } from '../components/dashboard/FirstRunCard';
+import { MiningControlPanel } from '../components/dashboard/MiningControlPanel';
+import { StatCard } from '../components/dashboard/StatCard';
+import { WalletHeroCard } from '../components/dashboard/WalletHeroCard';
+import { WeeklyActivityChart } from '../components/dashboard/WeeklyActivityChart';
 
 function levelProgress(dashboard: NonNullable<ReturnType<typeof useMining>['dashboard']>) {
   const { xp, currentLevelXpFloor, nextLevelXpTarget } = dashboard.progression;
@@ -31,17 +37,35 @@ export function DashboardPage() {
     abortMining,
   } = useMining();
 
+  const [bannerDismissed, setBannerDismissed] = useState(getFirstRunDismissed);
+
+  useEffect(() => {
+    if (dashboard && dashboard.mining.completedSessions > 0) {
+      setFirstRunDismissed();
+      setBannerDismissed(true);
+    }
+  }, [dashboard?.mining.completedSessions]);
+
+  const miningRingProgress = useMemo(() => {
+    if (!isMining || !minerStats) {
+      return 0;
+    }
+    return Math.min(100, minerStats.powerPercent + (minerStats.hashrate % 20));
+  }, [isMining, minerStats]);
+
   if (!dashboard) {
     return <div className="loading">Loading dashboard…</div>;
   }
 
+  const progress = levelProgress(dashboard);
   const isFirstRun =
     Number.parseFloat(dashboard.wallet.coinBalance) === 0 &&
     dashboard.mining.completedSessions === 0;
-  const progress = levelProgress(dashboard);
+
+  const showFirstRun = isFirstRun && !isMining && !bannerDismissed;
 
   return (
-    <div className="page">
+    <div className="page dashboard-page">
       <header className="page-header">
         <div>
           <p className="eyebrow">Overview</p>
@@ -49,125 +73,82 @@ export function DashboardPage() {
         </div>
       </header>
 
-      <section className="grid grid-4">
-        <article className={`panel wallet-hero ${walletFlash ? 'wallet-flash' : ''}`}>
-          <h2>Wallet</h2>
-          <p className="metric">{formatCoins(dashboard.wallet.coinBalance)}</p>
-          <p className="metric-caption">coins available</p>
-        </article>
+      <section className="dashboard-hero-grid">
+        <WalletHeroCard
+          balance={dashboard.wallet.coinBalance}
+          walletFlash={walletFlash}
+          isMining={isMining}
+          miningProgress={miningRingProgress}
+          powerPercent={minerStats?.powerPercent ?? power}
+        />
 
-        <article className="panel stat-card">
-          <h2>Level {dashboard.progression.level}</h2>
-          <p className="metric">{dashboard.progression.xp}</p>
-          <p className="metric-caption">total XP earned</p>
-          <div className="xp-progress">
-            <div className="xp-progress-bar" style={{ width: `${progress}%` }} />
+        <StatCard
+          title={`Level ${dashboard.progression.level}`}
+          value={dashboard.progression.xp}
+          caption="total XP earned"
+          icon={Trophy}
+        >
+          <div className="xp-progress xp-progress-lg">
+            <div
+              className="xp-progress-bar xp-progress-bar-shimmer"
+              style={{ width: `${progress}%` }}
+            />
           </div>
           <p className="muted xp-progress-label">
             {dashboard.progression.xpToNextLevel ?? 0} XP to next level
           </p>
-        </article>
+        </StatCard>
 
-        <article className="panel stat-card">
-          <h2>Sessions</h2>
-          <p className="metric">{dashboard.mining.completedSessions}</p>
-          <p className="metric-caption">completed mining runs</p>
-          <p className="muted">
-            {formatDuration(dashboard.mining.totalSecondsMined)} total mined
-          </p>
-        </article>
-
-        <article className="panel stat-card">
-          <h2>Referral rate</h2>
-          <p className="metric">{dashboard.progression.referralPercent}%</p>
-          <p className="metric-caption">commission on friend earnings</p>
-          <p className="muted">{dashboard.profile.referralsCount} friends referred</p>
-        </article>
-      </section>
-
-      {isFirstRun && !isMining && (
-        <div className="first-run-banner">
-          Start your first mining session to earn coins
-        </div>
-      )}
-
-      <section className="panel mining-panel">
-        <div className="mining-header">
-          <div>
-            <h2>Mining control</h2>
+        <StatCard
+          title="Sessions"
+          value={dashboard.mining.completedSessions}
+          caption="completed mining runs"
+          icon={Clock}
+          footer={
             <p className="muted">
-              {isMining
-                ? `Active session ${sessionId?.slice(0, 8)}…`
-                : 'Start a session to earn coins and XP'}
+              {formatDuration(dashboard.mining.totalSecondsMined)} total mined
             </p>
-          </div>
-          <span className={`badge ${isMining ? 'live mining' : 'idle'}`}>
-            {isMining ? 'mining' : 'idle'}
-          </span>
-        </div>
-
-        <PowerSlider
-          value={power}
-          disabled={isMining || busy}
-          onChange={setPower}
+          }
         />
 
-        {minerStats && (
-          <div className="stats-grid">
-            <div>
-              <span>Hashrate</span>
-              <AnimatedHashrate value={minerStats.hashrate} active={isMining} />
-            </div>
-            <div>
-              <span>Duration</span>
-              <strong>{formatDuration(minerStats.totalSeconds)}</strong>
-            </div>
-            <div>
-              <span>Shares</span>
-              <strong>{minerStats.sharesAccepted}</strong>
-            </div>
-            <div>
-              <span>Raw value</span>
-              <strong>{minerStats.rawMinedValue}</strong>
-            </div>
-          </div>
-        )}
-
-        <div className="actions">
-          {!isMining ? (
-            <button
-              className="primary"
-              type="button"
-              disabled={busy}
-              onClick={() => void startMining()}
-            >
-              Start mining
-            </button>
-          ) : (
-            <>
-              <button
-                className="primary"
-                type="button"
-                disabled={busy}
-                onClick={() => void stopMining()}
-              >
-                Stop and settle
-              </button>
-              <button
-                className="ghost"
-                type="button"
-                disabled={busy}
-                onClick={() => void abortMining()}
-              >
-                Abort
-              </button>
-            </>
-          )}
-        </div>
-
-        {error && <p className="error">{error}</p>}
-        {minerStats?.lastError && <p className="error">{minerStats.lastError}</p>}
+        <StatCard
+          title="Referral rate"
+          value={dashboard.progression.referralPercent}
+          suffix="%"
+          caption="commission on friend earnings"
+          icon={Users}
+          footer={
+            <p className="muted">{dashboard.profile.referralsCount} friends referred</p>
+          }
+        />
       </section>
+
+      <AnimatePresence>
+        {showFirstRun && (
+          <FirstRunCard
+            visible
+            onDismiss={() => {
+              setFirstRunDismissed();
+              setBannerDismissed(true);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <MiningControlPanel
+        isMining={isMining}
+        busy={busy}
+        power={power}
+        sessionId={sessionId}
+        minerStats={minerStats}
+        error={error}
+        onPowerChange={setPower}
+        onStart={() => void startMining()}
+        onStop={() => void stopMining()}
+        onAbort={() => void abortMining()}
+      />
+
+      <WeeklyActivityChart />
     </div>
   );
 }

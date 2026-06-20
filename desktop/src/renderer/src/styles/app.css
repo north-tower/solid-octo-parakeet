@@ -401,6 +401,118 @@ button.primary:disabled {
 input[type='range'] {
   width: 100%;
   accent-color: var(--accent-start);
+  position: relative;
+  z-index: 2;
+  background: transparent;
+}
+
+.slider-enhanced .slider-track-wrap {
+  position: relative;
+  padding-top: 28px;
+  padding-bottom: 4px;
+}
+
+.slider-enhanced .slider-track-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(28px + 7px);
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.slider-enhanced .slider-track-fill::before {
+  content: '';
+  display: block;
+  height: 100%;
+  width: var(--slider-fill, 0%);
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent-start), var(--accent-end));
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.35);
+  transition: width 0.15s ease;
+}
+
+.slider-enhanced input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 20px;
+  background: transparent;
+}
+
+.slider-enhanced input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.slider-enhanced input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+}
+
+.slider-enhanced.slider-mining-active input[type='range']::-webkit-slider-thumb {
+  animation: sliderThumbPulse 2.2s ease-in-out infinite;
+}
+
+@keyframes sliderThumbPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+  }
+}
+
+.slider-enhanced input[type='range']::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.slider-enhanced input[type='range']::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+}
+
+.slider-ticks {
+  position: relative;
+  height: 28px;
+  margin-top: 2px;
+}
+
+.slider-tick {
+  position: absolute;
+  transform: translateX(-50%);
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.slider-tick i {
+  display: block;
+  width: 1px;
+  height: 6px;
+  background: rgba(148, 163, 184, 0.45);
+}
+
+.slider-tick em {
+  font-style: normal;
+  font-size: 0.68rem;
+  color: #64748b;
 }
 
 .stats-grid {
@@ -1252,6 +1364,637 @@ button.danger {
   margin-top: 20px;
 }
 
+/* Dashboard premium layout */
+.dashboard-page .page-header {
+  margin-bottom: 24px;
+}
+
+.dashboard-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.dashboard-wallet-hero {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  overflow: hidden;
+  min-height: 280px;
+  border-color: rgba(129, 140, 248, 0.45);
+  transform: none;
+}
+
+.dashboard-wallet-glow {
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(
+    circle at 30% 20%,
+    rgba(99, 102, 241, 0.28),
+    transparent 55%
+  );
+  animation: walletGlowPulse 6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes walletGlowPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.06);
+  }
+}
+
+.dashboard-card-glow {
+  position: absolute;
+  top: -30%;
+  right: -20%;
+  width: 70%;
+  height: 70%;
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.12), transparent 70%);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.dashboard-stat-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(129, 140, 248, 0.18);
+  background:
+    linear-gradient(145deg, rgba(99, 102, 241, 0.06), rgba(17, 24, 39, 0.92));
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.dashboard-stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(129, 140, 248, 0.42);
+  box-shadow: 0 16px 48px rgba(99, 102, 241, 0.14);
+}
+
+.dashboard-stat-card:hover .dashboard-card-glow {
+  opacity: 1.2;
+}
+
+.dashboard-card-icon {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  color: rgba(165, 180, 252, 0.55);
+}
+
+.dashboard-wallet-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dashboard-wallet-copy h2 {
+  margin: 0;
+}
+
+.dashboard-wallet-metric {
+  margin: 12px 0 0;
+  font-size: clamp(2.2rem, 4vw, 3rem);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.gradient-metric-text {
+  background: linear-gradient(135deg, #eef2ff, #c4b5fd 45%, #a855f7);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.dashboard-wallet-sparkline {
+  position: relative;
+  z-index: 1;
+  margin-top: 20px;
+}
+
+.dashboard-sparkline-caption {
+  margin: 4px 0 0;
+  font-size: 0.78rem;
+}
+
+.dashboard-stat-footer {
+  margin-top: 8px;
+}
+
+.dashboard-stat-footer p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.mining-activity-ring {
+  position: relative;
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
+}
+
+.mining-activity-ring.active {
+  filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.45));
+}
+
+.mining-ring-track {
+  stroke: rgba(148, 163, 184, 0.15);
+}
+
+.mining-ring-progress {
+  stroke: url(#mining-ring-gradient);
+}
+
+.mining-activity-ring svg defs {
+  display: block;
+}
+
+.mining-ring-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.mining-ring-center strong {
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+}
+
+.mining-ring-center span {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mining-ring-pulse {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  animation: ringPulse 2s ease-out infinite;
+}
+
+@keyframes ringPulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+
+.xp-progress-lg {
+  margin-top: 14px;
+  height: 14px;
+}
+
+.xp-progress-bar-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.xp-progress-bar-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: xpShimmer 2.8s ease-in-out infinite;
+}
+
+@keyframes xpShimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.dashboard-first-run {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 20px;
+  border-color: rgba(129, 140, 248, 0.35);
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.14),
+    rgba(17, 24, 39, 0.92)
+  );
+}
+
+.dashboard-first-run-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  color: white;
+}
+
+.dashboard-first-run-copy h3 {
+  margin: 0 0 6px;
+}
+
+.dashboard-first-run-copy p {
+  margin: 0;
+  max-width: 56ch;
+}
+
+.dashboard-first-run-dismiss {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 8px;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.dashboard-first-run-dismiss:hover {
+  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.dashboard-mining-panel {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  border-color: rgba(129, 140, 248, 0.28);
+}
+
+.dashboard-mining-panel.mining-active {
+  border-color: rgba(129, 140, 248, 0.5);
+  box-shadow: 0 24px 64px rgba(99, 102, 241, 0.12);
+}
+
+.mining-panel-scan {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(99, 102, 241, 0.85),
+    rgba(168, 85, 247, 0.85),
+    transparent
+  );
+  background-size: 200% 100%;
+  animation: miningScan 5s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.65;
+}
+
+@keyframes miningScan {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.mining-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.65);
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mining-status-badge.active {
+  color: #c7d2fe;
+  border-color: rgba(129, 140, 248, 0.45);
+  background: rgba(99, 102, 241, 0.12);
+}
+
+.mining-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #64748b;
+  flex-shrink: 0;
+}
+
+.mining-status-badge.active .mining-status-dot {
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  animation: statusDotPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusDotPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(99, 102, 241, 0);
+  }
+}
+
+.mining-stat-strip {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  margin: 18px 0 4px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.55);
+  overflow: hidden;
+}
+
+.mining-stat-item {
+  position: relative;
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.mining-stat-divider {
+  position: absolute;
+  left: 0;
+  top: 18%;
+  bottom: 18%;
+  width: 1px;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.mining-stat-icon {
+  color: rgba(165, 180, 252, 0.55);
+}
+
+.mining-stat-label {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mining-stat-value {
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mining-stat-value .hashrate-live,
+.mining-stat-value strong {
+  font-family: inherit;
+}
+
+.dashboard-hashrate-chart.idle .dashboard-hashrate-chart-body {
+  filter: grayscale(0.35) brightness(0.85);
+}
+
+.dashboard-hashrate-chart-body {
+  position: relative;
+  min-height: 112px;
+}
+
+.dashboard-hashrate-idle-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.45);
+  border-radius: 10px;
+  pointer-events: none;
+}
+
+.dashboard-hashrate-idle-overlay p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #94a3b8;
+}
+
+.mining-panel-wave {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    transparent 0%,
+    rgba(99, 102, 241, 0.06) 40%,
+    rgba(168, 85, 247, 0.08) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: miningWave 8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes miningWave {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.mining-panel-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.mining-panel-particles span {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(165, 180, 252, 0.35);
+  left: calc(10% + var(--i) * 11%);
+  bottom: -8px;
+  animation: particleDrift 6s linear infinite;
+  animation-delay: calc(var(--i) * 0.7s);
+}
+
+@keyframes particleDrift {
+  0% {
+    transform: translateY(0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(-320px) scale(1);
+    opacity: 0;
+  }
+}
+
+.dashboard-mining-badge.live.mining {
+  animation: badgePulse 2s ease-in-out infinite;
+}
+
+@keyframes badgePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+  }
+}
+
+.dashboard-hashrate-chart {
+  position: relative;
+  z-index: 1;
+  margin: 8px 0 4px;
+  padding: 12px 12px 4px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.dashboard-chart-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: #94a3b8;
+}
+
+.dashboard-estimated-earnings {
+  position: relative;
+  z-index: 1;
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+}
+
+.dashboard-estimated-earnings strong {
+  color: #c7d2fe;
+}
+
+.dashboard-mine-button-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.dashboard-mine-ripple {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  animation: mineRipple 0.65s ease-out forwards;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.dashboard-mine-ripple.stop {
+  background: rgba(251, 191, 36, 0.55);
+}
+
+@keyframes mineRipple {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  100% {
+    transform: scale(28);
+    opacity: 0;
+  }
+}
+
+.dashboard-mine-button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-mine-start {
+  box-shadow:
+    0 0 0 1px rgba(129, 140, 248, 0.35),
+    0 12px 32px rgba(99, 102, 241, 0.35);
+}
+
+.dashboard-mine-stop {
+  background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
+  box-shadow:
+    0 0 0 1px rgba(251, 191, 36, 0.35),
+    0 12px 32px rgba(239, 68, 68, 0.28);
+}
+
+.dashboard-weekly-chart {
+  margin-bottom: 8px;
+}
+
+.dashboard-weekly-header {
+  margin-bottom: 8px;
+}
+
+.dashboard-weekly-header h2 {
+  margin: 0 0 4px;
+}
+
+.dashboard-weekly-empty,
+.dashboard-chart-loading {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-hero-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto;
+  }
+
+  .dashboard-wallet-hero {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    min-height: 0;
+  }
+}
+
 @media (max-width: 900px) {
   .app-shell,
   .app-shell.sidebar-collapsed {
@@ -1273,6 +2016,19 @@ button.danger {
   .grid-4,
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mining-stat-strip {
+    flex-direction: column;
+  }
+
+  .mining-stat-divider {
+    left: 16px;
+    right: 16px;
+    top: 0;
+    bottom: auto;
+    width: auto;
+    height: 1px;
   }
 
   .wallet-hero {

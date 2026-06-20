@@ -1,22 +1,40 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties, type MouseEvent } from 'react';
 
 interface PowerSliderProps {
   value: number;
   disabled: boolean;
   onChange: (value: number) => void;
+  /** Gradient track, tick marks, glowing thumb when mining */
+  enhanced?: boolean;
+  miningActive?: boolean;
 }
 
-export function PowerSlider({ value, disabled, onChange }: PowerSliderProps) {
+const TICKS = [25, 50, 75, 100] as const;
+
+export function PowerSlider({
+  value,
+  disabled,
+  onChange,
+  enhanced = false,
+  miningActive = false,
+}: PowerSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [hover, setHover] = useState(false);
   const showTooltip = dragging || hover;
+  const fillPercent = (value / 90) * 100;
+  const tooltipLeft = `${fillPercent}%`;
 
-  const tooltipLeft = `${(value / 90) * 100}%`;
+  const trackStyle = enhanced
+    ? ({ '--slider-fill': `${fillPercent}%` } as CSSProperties)
+    : undefined;
 
   return (
     <div
-      className={`slider-field ${disabled ? 'slider-disabled' : ''}`}
+      className={`slider-field${enhanced ? ' slider-enhanced' : ''}${
+        disabled ? ' slider-disabled' : ''
+      }${miningActive ? ' slider-mining-active' : ''}`}
+      style={trackStyle}
       title={
         disabled
           ? 'CPU power is locked while a mining session is active'
@@ -38,6 +56,7 @@ export function PowerSlider({ value, disabled, onChange }: PowerSliderProps) {
             {value}%
           </span>
         )}
+        {enhanced && <div className="slider-track-fill" aria-hidden="true" />}
         <input
           type="range"
           min={0}
@@ -50,6 +69,20 @@ export function PowerSlider({ value, disabled, onChange }: PowerSliderProps) {
           onBlur={() => setDragging(false)}
         />
       </div>
+      {enhanced && (
+        <div className="slider-ticks" aria-hidden="true">
+          {TICKS.map((tick) => (
+            <span
+              key={tick}
+              className="slider-tick"
+              style={{ left: `${(Math.min(tick, 90) / 90) * 100}%` }}
+            >
+              <i />
+              <em>{tick}%</em>
+            </span>
+          ))}
+        </div>
+      )}
       {disabled && (
         <p className="field-hint">
           Power is locked during an active session. Stop mining to adjust.
@@ -57,4 +90,22 @@ export function PowerSlider({ value, disabled, onChange }: PowerSliderProps) {
       )}
     </div>
   );
+}
+
+export function useButtonRipple() {
+  const [ripple, setRipple] = useState<{ x: number; y: number; key: number } | null>(
+    null,
+  );
+
+  const triggerRipple = (event: MouseEvent<HTMLElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setRipple({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      key: Date.now(),
+    });
+    window.setTimeout(() => setRipple(null), 650);
+  };
+
+  return { ripple, triggerRipple };
 }

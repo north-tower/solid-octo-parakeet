@@ -16,6 +16,10 @@ import { desktopApi } from '../lib/desktopApi';
 import { useNotifications } from './NotificationsContext';
 import { useSettings } from './SettingsContext';
 import { formatCoins } from '../utils/format';
+import {
+  celebrateLevelUp,
+  celebrateSessionComplete,
+} from '../utils/celebration';
 
 interface MiningContextValue {
   dashboard: DashboardResponse | null;
@@ -204,6 +208,13 @@ export function MiningProvider({ children }: { children: ReactNode }) {
           title: 'Level up!',
           message: `You reached level ${result.progression.currentLevel}.`,
         });
+      }
+
+      void celebrateSessionComplete();
+      if (result.progression.leveledUp) {
+        window.setTimeout(() => {
+          celebrateLevelUp();
+        }, 200);
       }
 
       await refreshDashboard();
