@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { MiningProvider } from './contexts/MiningContext';
 import { NotificationsProvider } from './contexts/NotificationsContext';
@@ -48,9 +48,9 @@ function AppRoutes() {
   }
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <AuthenticatedApp />
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 
