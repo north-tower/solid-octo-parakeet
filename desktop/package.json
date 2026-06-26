@@ -49,6 +49,13 @@
       "package.json"
     ],
     "asar": true,
+    "extraResources": [
+      {
+        "from": "resources/xmrig/win",
+        "to": "xmrig",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": [
         {
@@ -57,6 +64,24 @@
         }
       ],
       "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "extraResources": [
+        {
+          "from": "resources/xmrig/mac",
+          "to": "xmrig",
+          "filter": ["xmrig"]
+        }
+      ]
+    },
+    "linux": {
+      "extraResources": [
+        {
+          "from": "resources/xmrig/linux",
+          "to": "xmrig",
+          "filter": ["xmrig"]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

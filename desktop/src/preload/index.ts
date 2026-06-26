@@ -3,6 +3,7 @@ import {
   IPC_CHANNELS,
   type AppSettings,
   type MinerStats,
+  type MiningPoolConfig,
   type MiningStatusPayload,
 } from '../shared/constants';
 
@@ -25,6 +26,12 @@ contextBridge.exposeInMainWorld('desktop', {
     get: () => ipcRenderer.invoke(IPC_CHANNELS.APP_GET_SETTINGS) as Promise<AppSettings>,
     set: (partial: Partial<AppSettings>) =>
       ipcRenderer.invoke(IPC_CHANNELS.APP_SET_SETTINGS, partial) as Promise<AppSettings>,
+  },
+  miningPool: {
+    get: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.APP_GET_MINING_POOL) as Promise<MiningPoolConfig>,
+    set: (partial: Partial<MiningPoolConfig>) =>
+      ipcRenderer.invoke(IPC_CHANNELS.APP_SET_MINING_POOL, partial) as Promise<MiningPoolConfig>,
   },
   tray: {
     onStartMining: (callback: () => void) => {

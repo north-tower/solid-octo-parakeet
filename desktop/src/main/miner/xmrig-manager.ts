@@ -1,12 +1,16 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { app } from 'electron';
 import {
   estimateRawMinedValue,
   type MinerStats,
   type MiningStartOptions,
 } from '../../shared/constants';
+import {
+  isValidMoneroWallet,
+  resolveMiningPoolSettings,
+} from '../mining-config-store';
 
 const QUALIFIED_POWER = 80;
 
@@ -39,14 +43,26 @@ export class XmrigManager {
     this.lastError = null;
 
     const xmrigPath = this.resolveXmrigPath();
-    if (xmrigPath) {
-      this.mode = 'xmrig';
-      this.startXmrig(xmrigPath, options.powerPercent);
-    } else {
+    const poolSettings = resolveMiningPoolSettings();
+
+    if (!xmrigPath) {
       this.mode = 'simulated';
+      this.lastError =
+        'XMRig not found. Extract the full MSVC release zip into desktop/resources/xmrig/win/ (xmrig.exe and DLLs), then rebuild the app.';
       this.startSimulation(options.powerPercent);
+      return this.getStats();
     }
 
+    if (!isValidMoneroWallet(poolSettings.wallet)) {
+      this.mode = 'simulated';
+      this.lastError =
+        'Set your Monero wallet in Settings → Mining pool to enable real XMRig mining.';
+      this.startSimulation(options.powerPercent);
+      return this.getStats();
+    }
+
+    this.mode = 'xmrig';
+    this.startXmrig(xmrigPath, options.powerPercent, poolSettings);
     return this.getStats();
   }
 
@@ -101,19 +117,41 @@ export class XmrigManager {
       return configured;
     }
 
-    const bundled = join(
-      process.resourcesPath,
-      'xmrig',
-      process.platform === 'win32' ? 'xmrig.exe' : 'xmrig',
-    );
+    const binaryName = process.platform === 'win32' ? 'xmrig.exe' : 'xmrig';
+
+    const bundled = join(process.resourcesPath, 'xmrig', binaryName);
     if (existsSync(bundled)) {
       return bundled;
+    }
+
+    const platformDir =
+      process.platform === 'win32'
+        ? 'win'
+        : process.platform === 'darwin'
+          ? 'mac'
+          : 'linux';
+    const devLocal = join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'resources',
+      'xmrig',
+      platformDir,
+      binaryName,
+    );
+    if (existsSync(devLocal)) {
+      return devLocal;
     }
 
     return null;
   }
 
-  private startXmrig(xmrigPath: string, powerPercent: number) {
+  private startXmrig(
+    xmrigPath: string,
+    powerPercent: number,
+    poolSettings: { wallet: string; poolUrl: string },
+  ) {
     const configDir = join(app.getPath('userData'), 'xmrig');
     mkdirSync(configDir, { recursive: true });
     const configPath = join(configDir, 'config.json');
@@ -133,8 +171,8 @@ export class XmrigManager {
       },
       pools: [
         {
-          url: import.meta.env.VITE_XMRIG_POOL_URL ?? 'pool.supportxmr.com:443',
-          user: import.meta.env.VITE_XMRIG_WALLET ?? 'YOUR_MONERO_WALLET_ADDRESS',
+          url: poolSettings.poolUrl,
+          user: poolSettings.wallet,
           pass: 'x',
           tls: true,
         },
@@ -145,6 +183,7 @@ export class XmrigManager {
 
     this.process = spawn(xmrigPath, ['--config', configPath, '--no-color'], {
       stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: dirname(xmrigPath),
     });
 
     this.process.stdout.on('data', (chunk: Buffer) => {
@@ -158,16 +197,23 @@ export class XmrigManager {
       }
     });
 
+    this.process.on('error', (error) => {
+      this.lastError = `Failed to start XMRig: ${error.message}. Windows Defender may have blocked it — add an exclusion for the app install folder.`;
+      this.process = null;
+    });
+
     this.process.on('exit', (code) => {
       if (code && code !== 0) {
-        this.lastError = `XMRig exited with code ${code}`;
+        this.lastError = `XMRig exited with code ${code}. Check antivirus exclusions and your wallet/pool settings.`;
       }
       this.process = null;
     });
   }
 
   private parseXmrigOutput(output: string) {
-    const hashrateMatch = output.match(/speed\s+10s\/60s\/15m\s+([\d.]+)/i);
+    const hashrateMatch =
+      output.match(/speed\s+10s\/60s\/15m\s+([\d.]+)/i) ??
+      output.match(/([\d.]+)\s+H\/s/i);
     if (hashrateMatch) {
       this.hashrate = Number.parseFloat(hashrateMatch[1]);
     }

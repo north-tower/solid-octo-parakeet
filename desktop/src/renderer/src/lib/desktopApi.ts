@@ -1,8 +1,10 @@
 import {
   DEFAULT_APP_SETTINGS,
+  DEFAULT_MINING_POOL_CONFIG,
   estimateRawMinedValue,
   type AppSettings,
   type MinerStats,
+  type MiningPoolConfig,
   type MiningStatusPayload,
 } from '@shared/constants';
 
@@ -86,6 +88,7 @@ function mergeSettings(partial: Partial<AppSettings>): AppSettings {
 }
 
 let cachedSettings = { ...DEFAULT_APP_SETTINGS };
+let cachedMiningPool = { ...DEFAULT_MINING_POOL_CONFIG };
 
 export const desktopApi = {
   mining: {
@@ -115,6 +118,23 @@ export const desktopApi = {
       }
       cachedSettings = mergeSettings({ ...cachedSettings, ...partial });
       return cachedSettings;
+    },
+  },
+  miningPool: {
+    get: async () => {
+      if (window.desktop?.miningPool?.get) {
+        cachedMiningPool = await window.desktop.miningPool.get();
+        return cachedMiningPool;
+      }
+      return cachedMiningPool;
+    },
+    set: async (partial: Partial<MiningPoolConfig>) => {
+      if (window.desktop?.miningPool?.set) {
+        cachedMiningPool = await window.desktop.miningPool.set(partial);
+        return cachedMiningPool;
+      }
+      cachedMiningPool = { ...cachedMiningPool, ...partial };
+      return cachedMiningPool;
     },
   },
   tray: {

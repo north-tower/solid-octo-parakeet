@@ -137,7 +137,7 @@ export function LoginPage() {
         <p className="eyebrow">Gamer Mining Rewards</p>
         <h1>{mode === 'login' ? 'Welcome back' : 'Create account'}</h1>
         <p className="muted">
-          Mine in the background, earn coins, level up, and redeem gamer rewards.
+          Earn in the background, earn coins, level up, and redeem gamer rewards.
         </p>
 
         <form className="stack" onSubmit={onSubmit} noValidate>

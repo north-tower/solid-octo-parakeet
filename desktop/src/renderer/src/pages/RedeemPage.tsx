@@ -1,4 +1,4 @@
-import { Receipt } from 'lucide-react';
+import { CheckCircle, Gift, Receipt } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { MIN_PAYOUT_COINS } from '@shared/constants';
 import { api, type RewardRequestItem } from '../api/client';
@@ -15,27 +15,109 @@ import {
 } from '../utils/localPrefs';
 import { formatCoins, formatDate } from '../utils/format';
 
-const CONVERSION_RATE = '1 coin ≈ $0.001 USD';
+interface GiftCard {
+  id: PayoutMethod;
+  brand: string;
+  description: string;
+  color: string;
+  accent: string;
+  logo: string;
+  denominations: number[]; // coin cost
+}
+
+const GIFT_CARDS: GiftCard[] = [
+  {
+    id: 'giftcard_amazon',
+    brand: 'Amazon',
+    description: 'Shop millions of products',
+    color: 'rgba(255, 153, 0, 0.12)',
+    accent: '#FF9900',
+    logo: '🛒',
+    denominations: [500, 1000, 2500, 5000],
+  },
+  {
+    id: 'giftcard_steam',
+    brand: 'Steam',
+    description: 'PC gaming & more',
+    color: 'rgba(28, 135, 197, 0.12)',
+    accent: '#1C87C5',
+    logo: '🎮',
+    denominations: [500, 1000, 2500],
+  },
+  {
+    id: 'giftcard_xbox',
+    brand: 'Xbox',
+    description: 'Games, Gold & Game Pass',
+    color: 'rgba(16, 124, 16, 0.12)',
+    accent: '#107C10',
+    logo: '🟩',
+    denominations: [500, 1000, 2500],
+  },
+  {
+    id: 'giftcard_playstation',
+    brand: 'PlayStation',
+    description: 'PS Store credit',
+    color: 'rgba(0, 55, 145, 0.14)',
+    accent: '#4682F4',
+    logo: '🎯',
+    denominations: [500, 1000, 2500],
+  },
+  {
+    id: 'giftcard_netflix',
+    brand: 'Netflix',
+    description: 'Stream movies & shows',
+    color: 'rgba(229, 9, 20, 0.12)',
+    accent: '#E50914',
+    logo: '🎬',
+    denominations: [1000, 2500],
+  },
+  {
+    id: 'giftcard_roblox',
+    brand: 'Roblox',
+    description: 'Robux & Premium',
+    color: 'rgba(226, 35, 26, 0.12)',
+    accent: '#E2231A',
+    logo: '🧱',
+    denominations: [250, 500, 1000],
+  },
+  {
+    id: 'giftcard_google',
+    brand: 'Google Play',
+    description: 'Apps, games & content',
+    color: 'rgba(52, 168, 83, 0.12)',
+    accent: '#34A853',
+    logo: '▶️',
+    denominations: [500, 1000, 2500],
+  },
+  {
+    id: 'giftcard_apple',
+    brand: 'Apple',
+    description: 'App Store & iTunes',
+    color: 'rgba(148, 163, 184, 0.1)',
+    accent: '#a5b4fc',
+    logo: '🍎',
+    denominations: [500, 1000, 2500],
+  },
+];
 
 export function RedeemPage() {
   const { dashboard } = useMining();
   const { showToast } = useToast();
   const { addNotification } = useNotifications();
-  const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<PayoutMethod>('crypto_btc');
-  const [destination, setDestination] = useState('');
+  const [selectedCard, setSelectedCard] = useState<GiftCard | null>(null);
+  const [selectedDenomination, setSelectedDenomination] = useState<number | null>(null);
+  const [email, setEmail] = useState('');
   const [localPayouts, setLocalPayouts] = useState<LocalPayoutRequest[]>([]);
   const [rewardRequests, setRewardRequests] = useState<RewardRequestItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     setLocalPayouts(getLocalPayouts());
     void api
       .getRewardRequests()
       .then((response) => setRewardRequests(response.requests ?? []))
-      .catch(() => {
-        // optional
-      });
+      .catch(() => {});
   }, []);
 
   const balance = useMemo(
@@ -43,148 +125,213 @@ export function RedeemPage() {
     [dashboard?.wallet.coinBalance],
   );
 
-  const parsedAmount = Number.parseFloat(amount);
-  const meetsMinimum = balance >= MIN_PAYOUT_COINS;
-  const amountValid =
-    !Number.isNaN(parsedAmount) &&
-    parsedAmount >= MIN_PAYOUT_COINS &&
-    parsedAmount <= balance;
-  const destinationValid = destination.trim().length >= 8;
-  const canSubmit = !submitting && meetsMinimum && amountValid && destinationValid;
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const canAfford = selectedDenomination !== null && balance >= selectedDenomination;
+  const canSubmit =
+    !submitting &&
+    selectedCard !== null &&
+    selectedDenomination !== null &&
+    emailValid &&
+    canAfford;
 
-  const submitPayout = () => {
-    if (!canSubmit) {
-      return;
-    }
+  const handleSelectCard = (card: GiftCard) => {
+    setSelectedCard(card);
+    setSelectedDenomination(null);
+    setSuccess(false);
+  };
 
+  const submitRedeem = () => {
+    if (!canSubmit || !selectedCard || !selectedDenomination) return;
     setSubmitting(true);
     try {
       const payout: LocalPayoutRequest = {
         id: crypto.randomUUID(),
-        amount: parsedAmount.toFixed(8),
-        method,
-        destination: destination.trim(),
+        amount: String(selectedDenomination),
+        method: selectedCard.id,
+        destination: email.trim(),
         status: 'pending',
         createdAt: new Date().toISOString(),
       };
       addLocalPayout(payout);
       setLocalPayouts(getLocalPayouts());
-      setAmount('');
-      setDestination('');
-      showToast('Payout request submitted successfully', 'success');
+      setSuccess(true);
+      showToast(`${selectedCard.brand} gift card request submitted!`, 'success');
       addNotification({
         type: 'payout_processed',
-        title: 'Payout requested',
-        message: `${formatCoins(payout.amount)} coins payout is pending review.`,
+        title: 'Gift card requested',
+        message: `${selectedCard.brand} gift card for ${formatCoins(selectedDenomination)} coins is pending.`,
       });
+      setEmail('');
+      setSelectedDenomination(null);
+      setSelectedCard(null);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const disabledReason = !meetsMinimum
-    ? `You need at least ${MIN_PAYOUT_COINS} coins to redeem`
-    : !destinationValid && destination.length > 0
-      ? 'Enter a valid wallet address or email'
-      : !amountValid && amount.length > 0
-        ? `Enter an amount between ${MIN_PAYOUT_COINS} and ${formatCoins(balance)}`
-        : !canSubmit && !submitting
-          ? `You need at least ${MIN_PAYOUT_COINS} coins to redeem`
-          : null;
-
   return (
-    <div className="page">
+    <div className="page redeem-page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Wallet</p>
-          <h1>Redeem & withdraw</h1>
+          <p className="eyebrow">Rewards</p>
+          <h1>Redeem Gift Cards</h1>
         </div>
       </header>
 
-      <section className="grid grid-4">
-        <article className="panel wallet-hero">
-          <h2>Redeemable balance</h2>
-          <p className="metric">{formatCoins(dashboard?.wallet.coinBalance ?? '0')}</p>
-          <p className="metric-caption">coins available</p>
-        </article>
-        <article className="panel stat-card">
-          <h2>Minimum threshold</h2>
-          <p className="metric">{MIN_PAYOUT_COINS}</p>
-          <p className="metric-caption">coins required to withdraw</p>
-        </article>
-        <article className="panel stat-card">
-          <h2>Conversion rate</h2>
-          <p className="metric-caption">{CONVERSION_RATE}</p>
-        </article>
-        <article className="panel stat-card">
-          <h2>Review time</h2>
-          <p className="metric-caption">Payout requests are reviewed within 24 hours</p>
-        </article>
-      </section>
+      {/* Balance strip */}
+      <div className="redeem-balance-strip">
+        <div className="redeem-balance-strip-inner">
+          <div>
+            <p className="redeem-balance-label">Available Balance</p>
+            <p className="redeem-balance-value">{formatCoins(balance)}<span className="redeem-balance-unit"> coins</span></p>
+          </div>
+          <div className="redeem-balance-divider" />
+          <div>
+            <p className="redeem-balance-label">Minimum to redeem</p>
+            <p className="redeem-balance-value redeem-balance-min">{MIN_PAYOUT_COINS}<span className="redeem-balance-unit"> coins</span></p>
+          </div>
+          <div className="redeem-balance-divider" />
+          <div>
+            <p className="redeem-balance-label">Value</p>
+            <p className="redeem-balance-value redeem-balance-rate">1 coin ≈ $0.001</p>
+          </div>
+        </div>
+      </div>
 
-      <section className="panel form-panel">
-        <h2>Request payout</h2>
-
-        <label className="field">
-          <span>Amount (coins)</span>
-          <input
-            type="number"
-            min={MIN_PAYOUT_COINS}
-            step="0.00000001"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder={`Minimum ${MIN_PAYOUT_COINS}`}
-          />
-        </label>
-
-        <label className="field">
-          <span>Payout method</span>
-          <select
-            value={method}
-            onChange={(event) => setMethod(event.target.value as PayoutMethod)}
-          >
-            <option value="crypto_btc">Bitcoin (BTC)</option>
-            <option value="crypto_eth">Ethereum (ETH)</option>
-            <option value="paypal">PayPal</option>
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Destination address / email</span>
-          <input
-            value={destination}
-            onChange={(event) => setDestination(event.target.value)}
-            placeholder="Wallet address or PayPal email"
-          />
-        </label>
-
-        <div className="submit-row">
-          <button
-            type="button"
-            className="primary"
-            disabled={!canSubmit}
-            title={disabledReason ?? undefined}
-            onClick={submitPayout}
-          >
-            {submitting ? 'Submitting…' : 'Request payout'}
-          </button>
-          {disabledReason && (
-            <p className="field-hint muted">{disabledReason}</p>
-          )}
+      {/* Step 1: Pick a gift card */}
+      <section className="redeem-section">
+        <div className="redeem-step-header">
+          <span className="redeem-step-num">1</span>
+          <h2>Choose a gift card</h2>
+        </div>
+        <div className="giftcard-grid">
+          {GIFT_CARDS.map((card) => (
+            <button
+              key={card.id}
+              type="button"
+              className={`giftcard-tile${selectedCard?.id === card.id ? ' selected' : ''}`}
+              style={{ '--card-accent': card.accent, '--card-bg': card.color } as React.CSSProperties}
+              onClick={() => handleSelectCard(card)}
+            >
+              {selectedCard?.id === card.id && (
+                <span className="giftcard-check">
+                  <CheckCircle size={16} />
+                </span>
+              )}
+              <span className="giftcard-logo">{card.logo}</span>
+              <span className="giftcard-brand">{card.brand}</span>
+              <span className="giftcard-desc">{card.description}</span>
+            </button>
+          ))}
         </div>
       </section>
 
-      <section className="panel">
-        <h2>Payout history</h2>
+      {/* Step 2: Pick denomination — slides in when a card is selected */}
+      {selectedCard && (
+        <section className="redeem-section redeem-section-appear">
+          <div className="redeem-step-header">
+            <span className="redeem-step-num">2</span>
+            <h2>Select amount</h2>
+          </div>
+          <div className="denomination-grid">
+            {selectedCard.denominations.map((coins) => {
+              const usd = (coins * 0.001).toFixed(2);
+              const affordable = balance >= coins;
+              return (
+                <button
+                  key={coins}
+                  type="button"
+                  disabled={!affordable}
+                  className={`denomination-tile${selectedDenomination === coins ? ' selected' : ''}${!affordable ? ' unaffordable' : ''}`}
+                  onClick={() => setSelectedDenomination(coins)}
+                >
+                  <span className="denomination-usd">${usd}</span>
+                  <span className="denomination-coins">{formatCoins(coins)} coins</span>
+                  {!affordable && <span className="denomination-locked">Need more coins</span>}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Step 3: Delivery email */}
+      {selectedCard && selectedDenomination && (
+        <section className="redeem-section redeem-section-appear">
+          <div className="redeem-step-header">
+            <span className="redeem-step-num">3</span>
+            <h2>Delivery details</h2>
+          </div>
+          <div className="redeem-checkout panel">
+            <div className="redeem-summary">
+              <span className="redeem-summary-logo">{selectedCard.logo}</span>
+              <div>
+                <p className="redeem-summary-brand">{selectedCard.brand} Gift Card</p>
+                <p className="redeem-summary-amount">
+                  ${(selectedDenomination * 0.001).toFixed(2)} &mdash; {formatCoins(selectedDenomination)} coins
+                </p>
+              </div>
+            </div>
+
+            <label className="field">
+              <span>Send code to email</span>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your@email.com"
+                autoComplete="email"
+              />
+              {email.length > 0 && !emailValid && (
+                <span className="field-hint error">Please enter a valid email address</span>
+              )}
+            </label>
+
+            <div className="submit-row">
+              <button
+                type="button"
+                className="primary redeem-submit-btn"
+                disabled={!canSubmit}
+                onClick={submitRedeem}
+              >
+                {submitting ? 'Submitting…' : (
+                  <>
+                    <Gift size={16} />
+                    Redeem {selectedCard.brand} Gift Card
+                  </>
+                )}
+              </button>
+              {!canAfford && selectedDenomination && (
+                <p className="field-hint muted">
+                  You need {formatCoins(selectedDenomination - balance)} more coins for this card
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Success banner */}
+      {success && (
+        <div className="redeem-success-banner redeem-section-appear">
+          <CheckCircle size={20} />
+          <div>
+            <strong>Gift card requested!</strong>
+            <p>We'll email you the code within 24 hours after review.</p>
+          </div>
+        </div>
+      )}
+
+      {/* History */}
+      <section className="panel" style={{ marginTop: 24 }}>
+        <h2>Redemption history</h2>
         {localPayouts.length === 0 ? (
           <div className="empty-state">
             <span className="empty-state-icon" aria-hidden="true">
               <Receipt size={40} strokeWidth={1.25} />
             </span>
-            <h3>No payouts yet</h3>
-            <p className="muted">
-              Your redemption history will show up here once you request a payout.
-            </p>
+            <h3>No redemptions yet</h3>
+            <p className="muted">Your gift card redemptions will show up here.</p>
           </div>
         ) : (
           <div className="table-wrap">
@@ -192,8 +339,9 @@ export function RedeemPage() {
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>Amount</th>
-                  <th>Method</th>
+                  <th>Gift Card</th>
+                  <th>Coins</th>
+                  <th>Email</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -201,8 +349,9 @@ export function RedeemPage() {
                 {localPayouts.map((payout) => (
                   <tr key={payout.id}>
                     <td>{formatDate(payout.createdAt)}</td>
-                    <td>{formatCoins(payout.amount)}</td>
                     <td>{payoutMethodLabel(payout.method)}</td>
+                    <td>{formatCoins(payout.amount)}</td>
+                    <td className="muted">{payout.destination}</td>
                     <td>
                       <span className={`status-badge ${payout.status}`}>
                         {payoutStatusLabel(payout.status)}
@@ -217,7 +366,7 @@ export function RedeemPage() {
       </section>
 
       {rewardRequests.length > 0 && (
-        <section className="panel">
+        <section className="panel" style={{ marginTop: 16 }}>
           <h2>Catalog redemptions</h2>
           <div className="table-wrap">
             <table className="data-table">

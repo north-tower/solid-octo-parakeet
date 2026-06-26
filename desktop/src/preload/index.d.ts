@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   MinerStats,
+  MiningPoolConfig,
   MiningStatusPayload,
 } from '../shared/constants';
 
@@ -16,6 +17,10 @@ declare global {
       settings: {
         get: () => Promise<AppSettings>;
         set: (partial: Partial<AppSettings>) => Promise<AppSettings>;
+      };
+      miningPool: {
+        get: () => Promise<MiningPoolConfig>;
+        set: (partial: Partial<MiningPoolConfig>) => Promise<MiningPoolConfig>;
       };
       tray: {
         onStartMining: (callback: () => void) => () => void;

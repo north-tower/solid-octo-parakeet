@@ -151,8 +151,8 @@ export function MiningProvider({ children }: { children: ReactNode }) {
       showToast(
         stats.mode === 'xmrig'
           ? 'Mining started with XMRig'
-          : 'Mining started in simulated mode',
-        'info',
+          : stats.lastError ?? 'Mining started in simulated mode',
+        stats.mode === 'xmrig' ? 'success' : 'info',
       );
       await refreshDashboard();
     } catch (startError) {

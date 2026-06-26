@@ -60,7 +60,7 @@ export function ReferralsPage() {
             </button>
           </div>
           <p className="muted">
-            Earn {data.progression.referralPercent}% commission when friends mine.
+            Earn {data.progression.referralPercent}% commission when friends earn.
           </p>
         </article>
 

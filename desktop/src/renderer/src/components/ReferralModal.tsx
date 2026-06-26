@@ -23,7 +23,7 @@ export function ReferralModal({
       >
         <h2 id="referral-modal-title">Share your referral code</h2>
         <p className="muted">
-          Invite friends and earn from platform commission when they mine.
+          Invite friends and earn from platform commission when they earn.
         </p>
         <div className="referral-code-box">
           <code>{referralCode}</code>

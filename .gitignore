@@ -402,3 +402,8 @@ desktop/dist
 desktop/release
 desktop/node_modules
 .serverless/**/*.zip
+
+# XMRig bundled binaries — download separately, do not commit
+desktop/resources/xmrig/win/xmrig.exe
+desktop/resources/xmrig/mac/xmrig
+desktop/resources/xmrig/linux/xmrig

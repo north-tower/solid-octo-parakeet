@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PowerSlider } from '../components/PowerSlider';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useToast } from '../components/Toast';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { api } from '../api/client';
+import { desktopApi } from '../lib/desktopApi';
+import { DEFAULT_MINING_POOL_CONFIG } from '@shared/constants';
 
 export function SettingsPage() {
   const { logout } = useAuth();
@@ -12,6 +14,31 @@ export function SettingsPage() {
   const { showToast } = useToast();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [poolUrl, setPoolUrl] = useState(DEFAULT_MINING_POOL_CONFIG.poolUrl);
+  const [wallet, setWallet] = useState('');
+  const [savingPool, setSavingPool] = useState(false);
+
+  useEffect(() => {
+    void desktopApi.miningPool.get().then((config) => {
+      setPoolUrl(config.poolUrl);
+      setWallet(config.wallet);
+    });
+  }, []);
+
+  const saveMiningPool = async () => {
+    setSavingPool(true);
+    try {
+      await desktopApi.miningPool.set({ poolUrl, wallet });
+      showToast('Mining pool settings saved', 'success');
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : 'Failed to save mining pool settings',
+        'error',
+      );
+    } finally {
+      setSavingPool(false);
+    }
+  };
 
   const updateNotification = async (
     key: keyof typeof settings.notifications,
@@ -84,6 +111,42 @@ export function SettingsPage() {
             disabled={false}
             onChange={(value) => void saveDefaultPower(value)}
           />
+        </div>
+      </section>
+
+      <section className="panel form-panel">
+        <h2>Mining pool</h2>
+        <p className="muted">
+          Required for real XMRig mining. Your Monero address receives pool payouts.
+        </p>
+        <label className="field">
+          <span>Pool URL</span>
+          <input
+            type="text"
+            value={poolUrl}
+            onChange={(event) => setPoolUrl(event.target.value)}
+            placeholder="pool.supportxmr.com:443"
+          />
+        </label>
+        <label className="field">
+          <span>Monero wallet address</span>
+          <input
+            type="text"
+            value={wallet}
+            onChange={(event) => setWallet(event.target.value)}
+            placeholder="4..."
+            spellCheck={false}
+          />
+        </label>
+        <div className="actions">
+          <button
+            type="button"
+            className="primary"
+            disabled={savingPool}
+            onClick={() => void saveMiningPool()}
+          >
+            Save pool settings
+          </button>
         </div>
       </section>
 

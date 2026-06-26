@@ -5,10 +5,22 @@ export const IPC_CHANNELS = {
   MINING_STATS: 'mining:stats',
   APP_GET_SETTINGS: 'app:get-settings',
   APP_SET_SETTINGS: 'app:set-settings',
+  APP_GET_MINING_POOL: 'app:get-mining-pool',
+  APP_SET_MINING_POOL: 'app:set-mining-pool',
   APP_MINING_STATUS: 'app:mining-status',
   TRAY_START_MINING: 'tray:start-mining',
   TRAY_STOP_MINING: 'tray:stop-mining',
 } as const;
+
+export interface MiningPoolConfig {
+  wallet: string;
+  poolUrl: string;
+}
+
+export const DEFAULT_MINING_POOL_CONFIG: MiningPoolConfig = {
+  wallet: '',
+  poolUrl: 'pool.supportxmr.com:443',
+};
 
 export interface MinerStats {
   running: boolean;

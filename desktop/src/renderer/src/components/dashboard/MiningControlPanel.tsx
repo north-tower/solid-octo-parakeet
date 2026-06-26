@@ -309,16 +309,16 @@ export function MiningControlPanel({
 
       <div className="actions">
         {!isMining ? (
-          <div className="dashboard-mine-button-wrap">
+          <div className="dashboard-earn-button-wrap">
             {ripple && (
               <span
-                className="dashboard-mine-ripple"
+                className="dashboard-earn-ripple"
                 style={{ left: ripple.x, top: ripple.y }}
                 aria-hidden="true"
               />
             )}
             <motion.button
-              className="primary dashboard-mine-button dashboard-mine-start"
+              className="primary dashboard-earn-button dashboard-earn-start"
               type="button"
               disabled={busy}
               whileTap={{ scale: 0.96 }}
@@ -330,16 +330,16 @@ export function MiningControlPanel({
           </div>
         ) : (
           <>
-            <div className="dashboard-mine-button-wrap">
+            <div className="dashboard-earn-button-wrap">
               {ripple && (
                 <span
-                  className="dashboard-mine-ripple stop"
+                  className="dashboard-earn-ripple stop"
                   style={{ left: ripple.x, top: ripple.y }}
                   aria-hidden="true"
                 />
               )}
               <motion.button
-                className="primary dashboard-mine-button dashboard-mine-stop"
+                className="primary dashboard-earn-button dashboard-earn-stop"
                 type="button"
                 disabled={busy}
                 whileTap={{ scale: 0.96 }}

@@ -7,8 +7,9 @@ import {
   Tray,
 } from 'electron';
 import { join } from 'path';
-import { IPC_CHANNELS, type MiningStatusPayload } from '../shared/constants';
+import { IPC_CHANNELS, type MiningStatusPayload, type MiningPoolConfig } from '../shared/constants';
 import { getAppSettings, setAppSettings } from './settings-store';
+import { getMiningPoolConfig, setMiningPoolConfig } from './mining-config-store';
 import { XmrigManager } from './miner/xmrig-manager';
 
 const miner = new XmrigManager();
@@ -97,12 +98,16 @@ function createTray() {
 }
 
 function createWindow() {
+  // Remove the default File/Edit/View/Window/Help menu bar
+  Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 1024,
     minHeight: 680,
     title: 'Gamer Mining Rewards',
+    autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -176,6 +181,14 @@ ipcMain.handle(
     return setAppSettings(partial);
   },
 );
+
+ipcMain.handle(IPC_CHANNELS.APP_GET_MINING_POOL, () => {
+  return getMiningPoolConfig();
+});
+
+ipcMain.handle(IPC_CHANNELS.APP_SET_MINING_POOL, (_event, partial: Partial<MiningPoolConfig>) => {
+  return setMiningPoolConfig(partial);
+});
 
 ipcMain.on(IPC_CHANNELS.APP_MINING_STATUS, (_event, status: MiningStatusPayload) => {
   miningStatus = status;

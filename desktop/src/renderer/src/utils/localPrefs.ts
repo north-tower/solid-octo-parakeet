@@ -2,7 +2,15 @@ const AVATAR_KEY = 'gmr_avatar';
 const PAYOUTS_KEY = 'gmr_payout_requests';
 const ONBOARDING_KEY = 'gmr_onboarding_done';
 
-export type PayoutMethod = 'crypto_btc' | 'crypto_eth' | 'paypal';
+export type PayoutMethod =
+  | 'giftcard_amazon'
+  | 'giftcard_steam'
+  | 'giftcard_xbox'
+  | 'giftcard_playstation'
+  | 'giftcard_netflix'
+  | 'giftcard_roblox'
+  | 'giftcard_google'
+  | 'giftcard_apple';
 export type PayoutStatus = 'pending' | 'processing' | 'completed' | 'rejected';
 
 export interface LocalPayoutRequest {
@@ -53,12 +61,22 @@ export function addLocalPayout(payout: LocalPayoutRequest) {
 
 export function payoutMethodLabel(method: PayoutMethod) {
   switch (method) {
-    case 'crypto_btc':
-      return 'Bitcoin (BTC)';
-    case 'crypto_eth':
-      return 'Ethereum (ETH)';
-    case 'paypal':
-      return 'PayPal';
+    case 'giftcard_amazon':
+      return 'Amazon Gift Card';
+    case 'giftcard_steam':
+      return 'Steam Gift Card';
+    case 'giftcard_xbox':
+      return 'Xbox Gift Card';
+    case 'giftcard_playstation':
+      return 'PlayStation Gift Card';
+    case 'giftcard_netflix':
+      return 'Netflix Gift Card';
+    case 'giftcard_roblox':
+      return 'Roblox Gift Card';
+    case 'giftcard_google':
+      return 'Google Play Gift Card';
+    case 'giftcard_apple':
+      return 'Apple Gift Card';
     default:
       return method;
   }

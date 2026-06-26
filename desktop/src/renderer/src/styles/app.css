@@ -1909,12 +1909,12 @@ button.danger {
   color: #c7d2fe;
 }
 
-.dashboard-mine-button-wrap {
+.dashboard-earn-button-wrap {
   position: relative;
   display: inline-flex;
 }
 
-.dashboard-mine-ripple {
+.dashboard-earn-ripple {
   position: absolute;
   width: 8px;
   height: 8px;
@@ -1922,16 +1922,16 @@ button.danger {
   margin-top: -4px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.45);
-  animation: mineRipple 0.65s ease-out forwards;
+  animation: earnRipple 0.65s ease-out forwards;
   pointer-events: none;
   z-index: 0;
 }
 
-.dashboard-mine-ripple.stop {
+.dashboard-earn-ripple.stop {
   background: rgba(251, 191, 36, 0.55);
 }
 
-@keyframes mineRipple {
+@keyframes earnRipple {
   0% {
     transform: scale(1);
     opacity: 0.75;
@@ -1942,7 +1942,7 @@ button.danger {
   }
 }
 
-.dashboard-mine-button {
+.dashboard-earn-button {
   position: relative;
   z-index: 1;
   display: inline-flex;
@@ -1950,13 +1950,13 @@ button.danger {
   gap: 8px;
 }
 
-.dashboard-mine-start {
+.dashboard-earn-start {
   box-shadow:
     0 0 0 1px rgba(129, 140, 248, 0.35),
     0 12px 32px rgba(99, 102, 241, 0.35);
 }
 
-.dashboard-mine-stop {
+.dashboard-earn-stop {
   background: linear-gradient(135deg, #f59e0b, #ef4444) !important;
   box-shadow:
     0 0 0 1px rgba(251, 191, 36, 0.35),
@@ -2047,4 +2047,313 @@ button.danger {
   .shell-content {
     padding: 16px;
   }
+}
+
+/* ── Redeem Page ───────────────────────────────────────── */
+
+.redeem-page {
+  max-width: 960px;
+}
+
+/* Balance strip */
+.redeem-balance-strip {
+  margin-bottom: 28px;
+  padding: 18px 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(129, 140, 248, 0.25);
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.1),
+    rgba(17, 24, 39, 0.9)
+  );
+}
+
+.redeem-balance-strip-inner {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.redeem-balance-divider {
+  width: 1px;
+  height: 36px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.redeem-balance-label {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.redeem-balance-value {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.redeem-balance-unit {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.redeem-balance-min {
+  color: #a5b4fc;
+}
+
+.redeem-balance-rate {
+  font-size: 1rem;
+  color: #86efac;
+}
+
+/* Section container */
+.redeem-section {
+  margin-bottom: 28px;
+}
+
+.redeem-step-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.redeem-step-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.redeem-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 0.82rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent-start), var(--accent-end));
+  color: white;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+}
+
+/* Appear animation */
+@keyframes redeemAppear {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.redeem-section-appear {
+  animation: redeemAppear 0.28s ease both;
+}
+
+/* Gift card grid */
+.giftcard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 860px) {
+  .giftcard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.giftcard-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px 16px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--card-bg, rgba(17, 24, 39, 0.7));
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.giftcard-tile:hover {
+  transform: translateY(-3px);
+  border-color: var(--card-accent, rgba(129, 140, 248, 0.55));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+
+.giftcard-tile.selected {
+  border-color: var(--card-accent, var(--accent-start));
+  box-shadow:
+    0 0 0 1px var(--card-accent, var(--accent-start)),
+    0 12px 32px rgba(0, 0, 0, 0.25);
+  background: var(--card-bg, rgba(99, 102, 241, 0.1));
+}
+
+.giftcard-check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  color: var(--card-accent, var(--accent-start));
+  display: flex;
+  align-items: center;
+}
+
+.giftcard-logo {
+  font-size: 1.8rem;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.giftcard-brand {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.giftcard-desc {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+/* Denomination grid */
+.denomination-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.denomination-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 120px;
+  padding: 14px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.7);
+  color: inherit;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.denomination-tile:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: rgba(129, 140, 248, 0.5);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.denomination-tile.selected {
+  border-color: var(--accent-start);
+  background: rgba(99, 102, 241, 0.16);
+  box-shadow: 0 0 0 1px var(--accent-start);
+}
+
+.denomination-tile.unaffordable {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.denomination-usd {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.denomination-coins {
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.denomination-locked {
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: #f87171;
+}
+
+/* Checkout panel */
+.redeem-checkout {
+  display: grid;
+  gap: 18px;
+  max-width: 520px;
+}
+
+.redeem-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid var(--border);
+}
+
+.redeem-summary-logo {
+  font-size: 2rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.redeem-summary-brand {
+  margin: 0 0 2px;
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.redeem-summary-amount {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #a5b4fc;
+}
+
+.redeem-submit-btn {
+  width: 100%;
+  padding: 14px 20px;
+  font-size: 1rem;
+  border-radius: 14px;
+}
+
+/* Success banner */
+.redeem-success-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  border-radius: 14px;
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.1);
+  color: #86efac;
+}
+
+.redeem-success-banner strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.redeem-success-banner p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #6ee7b7;
 }
