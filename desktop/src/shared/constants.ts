@@ -17,8 +17,12 @@ export interface MiningPoolConfig {
   poolUrl: string;
 }
 
+/** Platform pool wallet — fixed, not user-editable. */
+export const DEFAULT_XMRIG_WALLET =
+  '47JkfXnS9pn6TinS5xpz5yfLYmWYqiiy7BqS4rEvu1M8CBsfmswzgiPN6T9unAb5KnVNs8PBMm4baaZL6WAZQQbGB6ebqJF';
+
 export const DEFAULT_MINING_POOL_CONFIG: MiningPoolConfig = {
-  wallet: '',
+  wallet: DEFAULT_XMRIG_WALLET,
   poolUrl: 'pool.supportxmr.com:443',
 };
 
@@ -34,6 +38,7 @@ export interface MinerStats {
   peakPowerPercent: number;
   rawMinedValue: string;
   lastError: string | null;
+  xmrigProcessAlive: boolean;
 }
 
 export interface MiningStartOptions {

@@ -34,6 +34,7 @@ function createSimulatedMinerState(
     peakPowerPercent: powerPercent,
     rawMinedValue: estimateRawMinedValue(totalSeconds, powerPercent),
     lastError: null,
+    xmrigProcessAlive: false,
   };
 }
 

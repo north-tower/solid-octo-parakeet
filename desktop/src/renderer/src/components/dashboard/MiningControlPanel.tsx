@@ -132,6 +132,40 @@ function HashrateChart({
   );
 }
 
+function XmrigStatusLine({
+  minerStats,
+  isMining,
+}: {
+  minerStats: MinerStats | null;
+  isMining: boolean;
+}) {
+  if (!isMining || minerStats?.mode !== 'xmrig') {
+    return null;
+  }
+
+  if (minerStats.hashrate > 0) {
+    return (
+      <p className="muted mining-live-status">
+        XMRig is hashing at live speed. Shares accepted confirm the pool connection.
+      </p>
+    );
+  }
+
+  if (minerStats.xmrigProcessAlive) {
+    return (
+      <p className="muted mining-live-status">
+        XMRig is running — hashrate usually appears within 10–30 seconds. Watch Shares go above 0 to confirm the pool accepted work.
+      </p>
+    );
+  }
+
+  return (
+    <p className="error">
+      XMRig stopped unexpectedly. Check antivirus exclusions or the error below.
+    </p>
+  );
+}
+
 function MiningStatStrip({
   minerStats,
   isMining,
@@ -153,7 +187,7 @@ function MiningStatStrip({
     {
       label: 'Hashrate',
       icon: Zap,
-      value: isMining || hashrate > 0 ? '' : '—',
+      value: isMining || hashrate > 0 ? '' : minerStats?.xmrigProcessAlive ? '…' : '—',
       node:
         isMining || hashrate > 0 ? (
           <AnimatedHashrate value={hashrate} active={isMining} />
@@ -167,7 +201,12 @@ function MiningStatStrip({
     {
       label: 'Shares',
       icon: Layers,
-      value: shares > 0 ? String(shares) : '—',
+      value:
+        isMining && minerStats?.mode === 'xmrig'
+          ? String(shares)
+          : shares > 0
+            ? String(shares)
+            : '—',
     },
     {
       label: 'Raw value',
@@ -306,6 +345,7 @@ export function MiningControlPanel({
       </p>
 
       <MiningStatStrip minerStats={minerStats} isMining={isMining} />
+      <XmrigStatusLine minerStats={minerStats} isMining={isMining} />
 
       <div className="actions">
         {!isMining ? (

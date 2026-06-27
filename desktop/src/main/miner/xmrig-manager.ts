@@ -13,6 +13,17 @@ import {
 } from '../mining-config-store';
 
 const QUALIFIED_POWER = 80;
+const XMRIG_API_PORT = 46587;
+
+interface XmrigSummaryResponse {
+  hashrate?: {
+    total?: number[];
+  };
+  results?: {
+    shares_good?: number;
+    shares_total?: number;
+  };
+}
 
 export class XmrigManager {
   private process: ChildProcessWithoutNullStreams | null = null;
@@ -27,6 +38,7 @@ export class XmrigManager {
   private secondsAbove80 = 0;
   private lastSampleAt: number | null = null;
   private simulationTimer: NodeJS.Timeout | null = null;
+  private apiPollTimer: NodeJS.Timeout | null = null;
   private lastError: string | null = null;
 
   start(options: MiningStartOptions): MinerStats {
@@ -48,15 +60,14 @@ export class XmrigManager {
     if (!xmrigPath) {
       this.mode = 'simulated';
       this.lastError =
-        'XMRig not found. Extract the full MSVC release zip into desktop/resources/xmrig/win/ (xmrig.exe and DLLs), then rebuild the app.';
+        'XMRig not found. Extract the full Windows x64 zip into desktop/resources/xmrig/win/, then rebuild the app.';
       this.startSimulation(options.powerPercent);
       return this.getStats();
     }
 
     if (!isValidMoneroWallet(poolSettings.wallet)) {
       this.mode = 'simulated';
-      this.lastError =
-        'Set your Monero wallet in Settings → Mining pool to enable real XMRig mining.';
+      this.lastError = 'Platform mining wallet is not configured.';
       this.startSimulation(options.powerPercent);
       return this.getStats();
     }
@@ -67,6 +78,11 @@ export class XmrigManager {
   }
 
   stop(): MinerStats {
+    if (this.apiPollTimer) {
+      clearInterval(this.apiPollTimer);
+      this.apiPollTimer = null;
+    }
+
     if (this.process) {
       this.process.kill();
       this.process = null;
@@ -108,6 +124,7 @@ export class XmrigManager {
       peakPowerPercent: this.peakPowerPercent,
       rawMinedValue: estimateRawMinedValue(totalSeconds, avgPowerPercent),
       lastError: this.lastError,
+      xmrigProcessAlive: this.process !== null && !this.process.killed,
     };
   }
 
@@ -161,7 +178,7 @@ export class XmrigManager {
       api: {
         id: null,
         'worker-id': null,
-        port: 0,
+        port: XMRIG_API_PORT,
         'access-token': null,
         restricted: true,
       },
@@ -181,19 +198,27 @@ export class XmrigManager {
 
     writeFileSync(configPath, JSON.stringify(config, null, 2));
 
-    this.process = spawn(xmrigPath, ['--config', configPath, '--no-color'], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      cwd: dirname(xmrigPath),
-    });
+    this.process = spawn(
+      xmrigPath,
+      ['--config', configPath, '--no-color', '--print-time=5'],
+      {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: dirname(xmrigPath),
+      },
+    );
 
-    this.process.stdout.on('data', (chunk: Buffer) => {
+    const handleOutput = (chunk: Buffer) => {
       this.parseXmrigOutput(chunk.toString());
-    });
+    };
 
+    this.process.stdout.on('data', handleOutput);
     this.process.stderr.on('data', (chunk: Buffer) => {
       const message = chunk.toString().trim();
       if (message) {
-        this.lastError = message;
+        this.parseXmrigOutput(message);
+        if (/error|failed|rejected/i.test(message)) {
+          this.lastError = message;
+        }
       }
     });
 
@@ -204,18 +229,54 @@ export class XmrigManager {
 
     this.process.on('exit', (code) => {
       if (code && code !== 0) {
-        this.lastError = `XMRig exited with code ${code}. Check antivirus exclusions and your wallet/pool settings.`;
+        this.lastError = `XMRig exited with code ${code}. Check antivirus exclusions and pool connectivity.`;
       }
       this.process = null;
     });
+
+    this.apiPollTimer = setInterval(() => {
+      void this.pollXmrigApi();
+    }, 5_000);
+    void this.pollXmrigApi();
+  }
+
+  private async pollXmrigApi() {
+    if (!this.process) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${XMRIG_API_PORT}/2/summary`);
+      if (!response.ok) {
+        return;
+      }
+
+      const data = (await response.json()) as XmrigSummaryResponse;
+      const total = data.hashrate?.total;
+      if (Array.isArray(total)) {
+        const liveRate = total.find((rate) => rate > 0) ?? total[0];
+        if (liveRate && liveRate > 0) {
+          this.hashrate = liveRate;
+        }
+      }
+
+      if (typeof data.results?.shares_good === 'number') {
+        this.sharesAccepted = data.results.shares_good;
+      }
+    } catch {
+      // API not ready yet while XMRig is starting.
+    }
   }
 
   private parseXmrigOutput(output: string) {
     const hashrateMatch =
-      output.match(/speed\s+10s\/60s\/15m\s+([\d.]+)/i) ??
+      output.match(/speed\s+[\d.s\/m]+\s+([\d.]+)/i) ??
       output.match(/([\d.]+)\s+H\/s/i);
     if (hashrateMatch) {
-      this.hashrate = Number.parseFloat(hashrateMatch[1]);
+      const rate = Number.parseFloat(hashrateMatch[1]);
+      if (rate > 0) {
+        this.hashrate = rate;
+      }
     }
 
     const acceptedMatch = output.match(/accepted\s+\((\d+)\/\d+\)/i);

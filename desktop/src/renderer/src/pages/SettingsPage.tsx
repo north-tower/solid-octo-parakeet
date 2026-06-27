@@ -15,20 +15,18 @@ export function SettingsPage() {
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [poolUrl, setPoolUrl] = useState(DEFAULT_MINING_POOL_CONFIG.poolUrl);
-  const [wallet, setWallet] = useState('');
   const [savingPool, setSavingPool] = useState(false);
 
   useEffect(() => {
     void desktopApi.miningPool.get().then((config) => {
       setPoolUrl(config.poolUrl);
-      setWallet(config.wallet);
     });
   }, []);
 
   const saveMiningPool = async () => {
     setSavingPool(true);
     try {
-      await desktopApi.miningPool.set({ poolUrl, wallet });
+      await desktopApi.miningPool.set({ poolUrl });
       showToast('Mining pool settings saved', 'success');
     } catch (error) {
       showToast(
@@ -117,7 +115,7 @@ export function SettingsPage() {
       <section className="panel form-panel">
         <h2>Mining pool</h2>
         <p className="muted">
-          Required for real XMRig mining. Your Monero address receives pool payouts.
+          Pool payouts use the platform wallet configured in the app. You can change the pool URL below.
         </p>
         <label className="field">
           <span>Pool URL</span>
@@ -128,16 +126,6 @@ export function SettingsPage() {
             placeholder="pool.supportxmr.com:443"
           />
         </label>
-        <label className="field">
-          <span>Monero wallet address</span>
-          <input
-            type="text"
-            value={wallet}
-            onChange={(event) => setWallet(event.target.value)}
-            placeholder="4..."
-            spellCheck={false}
-          />
-        </label>
         <div className="actions">
           <button
             type="button"
@@ -145,7 +133,7 @@ export function SettingsPage() {
             disabled={savingPool}
             onClick={() => void saveMiningPool()}
           >
-            Save pool settings
+            Save pool URL
           </button>
         </div>
       </section>
